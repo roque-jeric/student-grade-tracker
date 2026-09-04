@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Student Grade Tracker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Dashboard</h1>
+            <div class="user-info">
+                Logged in as <strong>{{ username }}</strong> ({{ role }})
+            </div>
+            <a href="/logout" class="btn-small logout">Logout</a>
+        </div>
+
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+
+        {% if role == 'teacher' %}
+        <!-- TEACHER VIEW -->
+        <div class="card">
+            <h2 style="text-align:center;">Add Grade</h2>
+            <form method="POST" action="/add_grade" class="centered-form">
+                <label for="student_id">Student</label>
+                <select name="student_id" id="student_id" required>
+                    {% for s in students %}
+                    <option value="{{ s['id'] }}">{{ s['username'] }} (ID: {{ s['id'] }})</option>
+                    {% endfor %}
+                </select>
+
+                <label for="subject">Subject</label>
+                <input type="text" name="subject" id="subject" placeholder="e.g. Math" required>
+
+                <label for="grade">Grade</label>
+                <input type="number" name="grade" id="grade" placeholder="e.g. 85" required>
+
+                <button type="submit">Add Grade</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>All Grades</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Student</th>
+                        <th>Subject</th>
+                        <th>Grade</th>
+                        <th>Updated By</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for g in grades %}
+                    <tr>
+                            <td>{{ g['id'] }}</td>
+                            <td>
+                                <select name="student_id" form="form-{{ g['id'] }}" required>
+                                    {% for s in students %}
+                                    <option value="{{ s['id'] }}" {% if s['id'] == g['student_id'] %}selected{% endif %}>{{ s['username'] }} (ID: {{ s['id'] }})</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td><input type="text" name="subject" value="{{ g['subject'] | safe }}" form="form-{{ g['id'] }}" required></td>
+                            <td><input type="number" name="grade" value="{{ g['grade'] }}" form="form-{{ g['id'] }}" required></td>
+                            <td>{{ g['updated_by'] }}</td>
+                            <td>
+                                <form id="form-{{ g['id'] }}" method="POST" action="/update_grade" class="inline-edit" style="margin:0">
+                                    <input type="hidden" name="grade_id" value="{{ g['id'] }}">
+                                    <button type="submit" class="btn-small">Save</button>
+                                </form>
+                            </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6">No grades found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% else %}
+        <!-- STUDENT VIEW -->
+        <div class="card">
+            <h2>My Grades</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Subject</th>
+                        <th>Grade</th>
+                        <th>Updated By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for g in grades %}
+                    <tr>
+                        <td>{{ g['subject'] | safe }}</td>
+                        <td>{{ g['grade'] | safe }}</td>
+                        <td>{{ g['updated_by'] }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3">No grades found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

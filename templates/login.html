@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Grade Tracker - Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="card login-card">
+            <h1>Student Grade Tracker</h1>
+            <p class="subtitle" style="text-align:center;">Login to continue</p>
+
+            {% if error %}
+            <div class="error">{{ error }}</div>
+            {% endif %}
+
+            <form method="POST" action="/login" class="centered-form">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" placeholder="e.g. teacher1" required>
+
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="e.g. pass123" required>
+
+                <button type="submit">Login</button>
+            </form>
+
+
+        </div>
+    </div>
+</body>
+</html>

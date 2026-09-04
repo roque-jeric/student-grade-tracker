@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Grades - Student Grade Tracker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>View Grades</h1>
+            <div style="text-align:center; margin:5px 0;"><a href="/dashboard" class="btn-small">Back to Dashboard</a></div>
+            <a href="/logout" class="btn-small logout">Logout</a>
+        </div>
+
+        <div class="card">
+            <h2>Grades for student_id = {{ student_id if student_id else " (your own)" }}</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Student</th>
+                        <th>Subject</th>
+                        <th>Grade</th>
+                        <th>Updated By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for g in grades %}
+                    <tr>
+                        <td>{{ g['student_name'] }} (ID: {{ g['student_id'] }})</td>
+                        <td>{{ g['subject'] | safe }}</td>
+                        <td>{{ g['grade'] | safe }}</td>
+                        <td>{{ g['updated_by'] }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4">No grades found for this student.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
