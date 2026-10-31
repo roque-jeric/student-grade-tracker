@@ -29,8 +29,8 @@
                     {% for g in grades %}
                     <tr>
                         <td>{{ g['student_name'] }} (ID: {{ g['student_id'] }})</td>
-                        <td>{{ g['subject'] | safe }}</td>
-                        <td>{{ g['grade'] | safe }}</td>
+                        <td>{{ g['subject'] }}</td>
+                        <td>{{ g['grade'] }}</td>
                         <td>{{ g['updated_by'] }}</td>
                     </tr>
                     {% else %}

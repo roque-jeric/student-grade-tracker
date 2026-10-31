@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import bcrypt
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "database.db")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
@@ -16,10 +17,14 @@ users = [
     ("teacher1", "pass123", "teacher"),
     ("student1", "pass123", "student"),
     ("student2", "pass123", "student"),
+    ("academic_admin1", "pass123", "academic_admin"),
+    ("registrar1", "pass123", "registrar"),
+    ("it_admin1", "pass123", "it_admin"),
 ]
 
 for username, password, role in users:
-    conn.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", (username, password, role))
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    conn.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", (username, hashed, role))
 
 cur = conn.execute("SELECT id, username FROM users WHERE role='student'")
 student_map = {row[1]: row[0] for row in cur.fetchall()}
@@ -35,9 +40,12 @@ for student_id, subject, grade, updated_by in grades:
     conn.execute("INSERT INTO grades (student_id, subject, grade, updated_by) VALUES (?, ?, ?, ?)",
                  (student_id, subject, grade, updated_by))
 
+conn.execute("INSERT INTO grading_periods (name, status) VALUES (?, ?)", ("Prelim", "open"))
+
 conn.commit()
 conn.close()
 print(f"Database initialized at {DB_PATH}")
-print("Seeded users:")
+print("Seeded users (bcrypt hashed):")
 for u in users:
-    print(f"  {u[0]} / {u[1]} / {u[2]}")
+    print(f"  {u[0]} / {u[2]}")
+print("Seeded grading period: Prelim (open)")

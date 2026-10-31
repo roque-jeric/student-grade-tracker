@@ -24,6 +24,9 @@
         <!-- TEACHER VIEW -->
         <div class="card">
             <h2 style="text-align:center;">Add Grade</h2>
+            {% if period and period['status'] != 'open' %}
+            <p style="text-align:center; color:red;">Grading period {{ period['status'] }} - cannot add grades</p>
+            {% endif %}
             <form method="POST" action="/add_grade" class="centered-form">
                 <label for="student_id">Student</label>
                 <select name="student_id" id="student_id" required>
@@ -40,10 +43,11 @@
 
                 <button type="submit">Add Grade</button>
             </form>
+            <p style="text-align:center; font-size:12px; color:gray;">Period: {{ period['name'] }} ({{ period['status'] }})</p>
         </div>
 
         <div class="card">
-            <h2>All Grades</h2>
+            <h2>All Grades - Correction Needs Admin Approval</h2>
             <table>
                 <thead>
                     <tr>
@@ -66,13 +70,13 @@
                                     {% endfor %}
                                 </select>
                             </td>
-                            <td><input type="text" name="subject" value="{{ g['subject'] | safe }}" form="form-{{ g['id'] }}" required></td>
+                            <td><input type="text" name="subject" value="{{ g['subject'] }}" form="form-{{ g['id'] }}" required></td>
                             <td><input type="number" name="grade" value="{{ g['grade'] }}" form="form-{{ g['id'] }}" required></td>
                             <td>{{ g['updated_by'] }}</td>
                             <td>
                                 <form id="form-{{ g['id'] }}" method="POST" action="/update_grade" class="inline-edit" style="margin:0">
                                     <input type="hidden" name="grade_id" value="{{ g['id'] }}">
-                                    <button type="submit" class="btn-small">Save</button>
+                                    <button type="submit" class="btn-small">Request Update</button>
                                 </form>
                             </td>
                     </tr>
@@ -83,10 +87,151 @@
             </table>
         </div>
 
+        {% elif role == 'academic_admin' %}
+        <div class="card">
+            <h2>All Grades</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Student</th>
+                        <th>Subject</th>
+                        <th>Grade</th>
+                        <th>Updated By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for g in grades %}
+                    <tr>
+                        <td>{{ g['id'] }}</td>
+                        <td>{{ g['student_name'] }} (ID: {{ g['student_id'] }})</td>
+                        <td>{{ g['subject'] }}</td>
+                        <td>{{ g['grade'] }}</td>
+                        <td>{{ g['updated_by'] }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5">No grades</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card">
+            <h2>Pending Grade Corrections ({{ pending_requests|length }})</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Req ID</th>
+                        <th>Grade ID</th>
+                        <th>Student</th>
+                        <th>Subject</th>
+                        <th>Old Grade</th>
+                        <th>New Grade</th>
+                        <th>Requested By</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in pending_requests %}
+                    <tr>
+                        <td>{{ r['id'] }}</td>
+                        <td>{{ r['grade_id'] }}</td>
+                        <td>{{ r['student_name'] }}</td>
+                        <td>{{ r['subject'] }}</td>
+                        <td>{{ r['old_grade'] }}</td>
+                        <td>{{ r['new_grade'] }}</td>
+                        <td>{{ r['requested_by'] }}</td>
+                        <td>
+                            <form method="POST" action="/approvals/{{ r['id'] }}/approve" style="display:inline;"><button type="submit" class="btn-small">Approve</button></form>
+                            <form method="POST" action="/approvals/{{ r['id'] }}/reject" style="display:inline;"><button type="submit" class="btn-small" style="background:#f0a0a0;">Reject</button></form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8">No pending requests</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% elif role == 'registrar' %}
+        <div class="card">
+            <h2>Grading Period</h2>
+            <p>Period: <strong>{{ period['name'] }}</strong> - Status: <strong>{{ period['status'] }}</strong></p>
+            <form method="POST" action="/periods/lock" class="centered-form" style="text-align:center;">
+                <label style="display:block; margin:5px auto; text-align:center;"><input type="checkbox" name="archive" value="1"> Archive when locked</label>
+                <button type="submit" style="width:200px; margin:5px auto;">Toggle Lock (open -&gt; locked -&gt; archived)</button>
+            </form>
+        </div>
+        <div class="card">
+            <h2>All Grades</h2>
+            <table>
+                <thead>
+                    <tr><th>ID</th><th>Student</th><th>Subject</th><th>Grade</th><th>Period</th></tr>
+                </thead>
+                <tbody>
+                    {% for g in grades %}
+                    <tr><td>{{ g['id'] }}</td><td>{{ g['student_name'] }}</td><td>{{ g['subject'] }}</td><td>{{ g['grade'] }}</td><td>{{ period['name'] }}</td></tr>
+                    {% else %}
+                    <tr><td colspan="5">No grades</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card">
+            <h2>Transcripts</h2>
+            <form method="GET" action="/transcript">
+                <label>Student ID</label>
+                <select name="student_id" required>
+                    {% for s in students %}
+                    <option value="{{ s['id'] }}">{{ s['username'] }} (ID: {{ s['id'] }})</option>
+                    {% endfor %}
+                </select>
+                <button type="submit">Generate Certified Transcript</button>
+            </form>
+        </div>
+
+        {% elif role == 'it_admin' %}
+        <div class="card">
+            <h2>User Accounts</h2>
+            <table>
+                <thead>
+                    <tr><th>ID</th><th>Username</th><th>Role</th><th>Locked</th><th>Fails</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                    {% for u in all_users %}
+                    <tr>
+                        <td>{{ u['id'] }}</td>
+                        <td>{{ u['username'] }}</td>
+                        <td>{{ u['role'] }}</td>
+                        <td>{{ u['is_locked'] }}</td>
+                        <td>{{ u['failed_attempts'] }}</td>
+                        <td>
+                            <form method="POST" action="/admin/unlock" style="display:inline;"><input type="hidden" name="user_id" value="{{ u['id'] }}"><button type="submit" class="btn-small">Unlock</button></form>
+                            <form method="POST" action="/admin/reset" style="display:inline;"><input type="hidden" name="user_id" value="{{ u['id'] }}"><input type="text" name="new_password" placeholder="new pass" style="width:80px;" required><button type="submit" class="btn-small">Reset</button></form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card">
+            <h2>Audit Logs (Last 20)</h2>
+            <table>
+                <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Details</th></tr></thead>
+                <tbody>
+                    {% for log in audit_logs %}
+                    <tr><td>{{ log['timestamp'] }}</td><td>{{ log['username'] or log['user_id'] }}</td><td>{{ log['action'] }}</td><td>{{ log['details'] }}</td></tr>
+                    {% else %}
+                    <tr><td colspan="4">No logs</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
         {% else %}
         <!-- STUDENT VIEW -->
         <div class="card">
             <h2>My Grades</h2>
+            <p>Period: {{ period['name'] }} ({{ period['status'] }})</p>
             <table>
                 <thead>
                     <tr>
@@ -98,8 +243,8 @@
                 <tbody>
                     {% for g in grades %}
                     <tr>
-                        <td>{{ g['subject'] | safe }}</td>
-                        <td>{{ g['grade'] | safe }}</td>
+                        <td>{{ g['subject'] }}</td>
+                        <td>{{ g['grade'] }}</td>
                         <td>{{ g['updated_by'] }}</td>
                     </tr>
                     {% else %}
@@ -107,6 +252,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+            <p><a href="/transcript" class="btn-small">View My Transcript</a></p>
         </div>
         {% endif %}
     </div>
