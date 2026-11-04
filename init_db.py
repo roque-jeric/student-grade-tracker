@@ -2,6 +2,8 @@ import sqlite3
 import os
 import bcrypt
 
+from sample_data import seed_people
+
 DB_PATH = os.path.join(os.path.dirname(__file__), "database.db")
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
 
@@ -40,7 +42,9 @@ for student_id, subject, grade, updated_by in grades:
     conn.execute("INSERT INTO grades (student_id, subject, grade, updated_by) VALUES (?, ?, ?, ?)",
                  (student_id, subject, grade, updated_by))
 
-conn.execute("INSERT INTO grading_periods (name, status) VALUES (?, ?)", ("Prelim", "open"))
+conn.execute("INSERT INTO grading_periods (name, status) VALUES (?, ?)", ("Final", "open"))
+
+seed_people(conn)
 
 conn.commit()
 conn.close()
@@ -48,4 +52,4 @@ print(f"Database initialized at {DB_PATH}")
 print("Seeded users (bcrypt hashed):")
 for u in users:
     print(f"  {u[0]} / {u[2]}")
-print("Seeded grading period: Prelim (open)")
+print("Seeded grading period: Final (open)")

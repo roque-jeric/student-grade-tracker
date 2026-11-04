@@ -1,0 +1,9 @@
+# Claude Code and skills
+.claude/
+skills/
+skills-lock.json
+.taste-skill/
+.impeccable/
+
+# Database copies made by migrate_db.py
+*.bak

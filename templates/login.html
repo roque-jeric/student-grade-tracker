@@ -1,33 +1,29 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Student Grade Tracker - Login</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <div class="container">
-        <div class="card login-card">
-            <h1>Student Grade Tracker</h1>
-            <p class="subtitle" style="text-align:center;">Login to continue</p>
+{% extends 'auth_base.html' %}
+{% block title %}Log in{% endblock %}
 
-            {% if error %}
-            <div class="error">{{ error }}</div>
-            {% endif %}
+{% block body %}
+<h1>{{ ui.PORTAL }}</h1>
+<p class="login-sub">Log in with your {{ ui.COLLEGE }} account.</p>
 
-            <form method="POST" action="/login" class="centered-form">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" placeholder="e.g. teacher1" required>
+{% if error %}
+<p class="notice notice-negative" role="alert">
+    {{ error }}{% if 'locked' in error %}. <a class="notice-link" href="/forgot-password">How to reach IT</a>{% endif %}
+</p>
+{% endif %}
 
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" placeholder="e.g. pass123" required>
-
-                <button type="submit">Login</button>
-            </form>
-
-
-        </div>
+<form method="POST" action="/login" class="stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+        <label for="username">Username</label>
+        <input class="control" type="text" id="username" name="username" autocomplete="username" autofocus required>
     </div>
-</body>
-</html>
+    <div class="field">
+        <div class="label-row">
+            <label for="password">Password</label>
+            <a class="card-link" href="/forgot-password">Forgot password?</a>
+        </div>
+        <input class="control" type="password" id="password" name="password" autocomplete="current-password" aria-describedby="password-note" required>
+        <p class="hint" id="password-note">Five wrong passwords lock the account until the IT office unlocks it.</p>
+    </div>
+    <button type="submit" class="btn btn-primary btn-wide">Log in</button>
+</form>
+{% endblock %}

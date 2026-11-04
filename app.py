@@ -4,6 +4,7 @@ import os
 import re
 import secrets
 import logging
+import datetime
 from functools import wraps
 import bcrypt
 
@@ -28,6 +29,42 @@ VALID_ROLES = ('student', 'teacher', 'academic_admin', 'registrar', 'it_admin')
 MAX_FAILED_ATTEMPTS = 5
 USERNAME_RE = re.compile(r'^[A-Za-z0-9_]{3,32}$')
 SUBJECT_RE = re.compile(r'^[A-Za-z0-9 .\-]{1,50}$')
+PASS_MARK = 75
+
+GRADES_SELECT = (
+    "SELECT grades.id, grades.student_id, grades.subject, grades.grade, "
+    "COALESCE(entered.full_name, grades.updated_by) AS updated_by, "
+    "COALESCE(student.full_name, student.username) AS student_name, student.student_no "
+    "FROM grades JOIN users student ON grades.student_id = student.id "
+    "LEFT JOIN users entered ON entered.username = grades.updated_by"
+)
+STUDENTS_SELECT = (
+    "SELECT id, username, COALESCE(full_name, username) AS full_name, student_no, program, year_level "
+    "FROM users WHERE role='student'"
+)
+
+
+def csrf_token():
+    """The session's form token. Every POST form carries it in a hidden field."""
+    token = session.get("csrf_token")
+    if not token:
+        token = session["csrf_token"] = secrets.token_urlsafe(32)
+    return token
+
+
+app.jinja_env.globals["csrf_token"] = csrf_token
+
+
+@app.before_request
+def check_csrf():
+    if request.method != "POST":
+        return None
+    sent = request.form.get("csrf_token", "")
+    expected = session.get("csrf_token", "")
+    if not expected or not sent or not secrets.compare_digest(sent, expected):
+        logging.error(f"csrf rejected path={request.path} user={session.get('username')}")
+        return "This form has expired. Go back, reload the page and try again.", 400
+    return None
 
 
 def get_db():
@@ -43,6 +80,26 @@ def close_connection(exception):
     db = getattr(g, '_database', None)
     if db is not None:
         db.close()
+
+
+@app.context_processor
+def shell_context():
+    if "user_id" not in session:
+        return {"pass_mark": PASS_MARK}
+    try:
+        db = get_db()
+        shell_user = db.execute("SELECT full_name FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        period = db.execute("SELECT * FROM grading_periods LIMIT 1").fetchone()
+        pending = db.execute("SELECT COUNT(*) FROM grade_change_requests WHERE status='pending'").fetchone()[0]
+    except Exception as e:
+        logging.error(f"shell context failed err={e}")
+        return {"pass_mark": PASS_MARK}
+    return {
+        "pass_mark": PASS_MARK,
+        "shell_period": period,
+        "shell_pending": pending,
+        "shell_name": (shell_user["full_name"] if shell_user else None) or session.get("username"),
+    }
 
 
 def audit(user_id, action, details):
@@ -125,11 +182,11 @@ def require_role(*roles):
 
 def dashboard_data():
     db = get_db()
-    all_students = db.execute("SELECT id, username FROM users WHERE role='student'").fetchall()
-    all_users = db.execute("SELECT id, username, role, is_locked, failed_attempts FROM users").fetchall()
+    all_students = db.execute(STUDENTS_SELECT).fetchall()
+    all_users = db.execute("SELECT id, username, role, is_locked, failed_attempts, full_name, student_no FROM users").fetchall()
     period = db.execute("SELECT * FROM grading_periods LIMIT 1").fetchone()
     pending_requests = db.execute(
-        "SELECT grade_change_requests.*, grades.subject, grades.grade as old_grade, users.username as student_name "
+        "SELECT grade_change_requests.*, grades.subject, grades.grade as old_grade, grades.student_id, COALESCE(users.full_name, users.username) as student_name "
         "FROM grade_change_requests JOIN grades ON grade_change_requests.grade_id = grades.id "
         "JOIN users ON grades.student_id = users.id WHERE grade_change_requests.status='pending'"
     ).fetchall()
@@ -140,15 +197,114 @@ def dashboard_data():
     return all_students, all_users, period, pending_requests, audit_logs
 
 
-def teacher_error(user, db, period, message="Invalid input.", log_label="teacher input"):
+def mean(values):
+    return sum(values) / len(values) if values else None
+
+
+def surname_key(name):
+    return (name.split()[-1].lower(), name.lower())
+
+
+def class_roster(db):
+    """One row per student, in surname order, with the figures the teacher's screens show."""
+    students = db.execute(STUDENTS_SELECT).fetchall()
+    grades = db.execute(GRADES_SELECT).fetchall()
+    waiting = db.execute(
+        "SELECT grades.student_id, COUNT(*) AS n FROM grade_change_requests "
+        "JOIN grades ON grade_change_requests.grade_id = grades.id "
+        "WHERE grade_change_requests.status='pending' GROUP BY grades.student_id"
+    ).fetchall()
+    waiting = {row["student_id"]: row["n"] for row in waiting}
+
+    roster = []
+    for s in sorted(students, key=lambda row: surname_key(row["full_name"])):
+        own = [g for g in grades if g["student_id"] == s["id"]]
+        below = [g for g in own if g["grade"] < PASS_MARK]
+        roster.append({
+            "id": s["id"],
+            "name": s["full_name"],
+            "student_no": s["student_no"],
+            "program": s["program"],
+            "year_level": s["year_level"],
+            "grades": own,
+            "below": sorted(below, key=lambda g: g["grade"]),
+            "average": mean([g["grade"] for g in own]),
+            "waiting": waiting.get(s["id"], 0),
+            "standing": "none" if not own else ("below" if below else "passing"),
+        })
+    return roster
+
+
+def course_averages(db):
+    subjects = {}
+    for g in db.execute(GRADES_SELECT).fetchall():
+        subjects.setdefault(g["subject"], []).append(g["grade"])
+    return [
+        {"subject": name, "average": mean(marks), "count": len(marks), "below": sum(1 for m in marks if m < PASS_MARK)}
+        for name, marks in sorted(subjects.items())
+    ]
+
+
+def render_roster(error=None, status=200):
+    db = get_db()
+    roster = class_roster(db)
+    all_marks = [g["grade"] for s in roster for g in s["grades"]]
+    return render_template(
+        "students.html",
+        roster=roster,
+        courses=course_averages(db),
+        class_average=mean(all_marks),
+        grade_count=len(all_marks),
+        period=db.execute("SELECT * FROM grading_periods LIMIT 1").fetchone(),
+        error=error,
+    ), status
+
+
+def render_student(student_id, error=None, status=200):
+    db = get_db()
+    roster = class_roster(db)
+    position = next((i for i, s in enumerate(roster) if s["id"] == student_id), None)
+    if position is None:
+        return "Student not found", 404
+    student = roster[position]
+    corrections = db.execute(
+        "SELECT grade_change_requests.grade_id, grade_change_requests.new_grade "
+        "FROM grade_change_requests JOIN grades ON grade_change_requests.grade_id = grades.id "
+        "WHERE grades.student_id=? AND grade_change_requests.status='pending' "
+        "ORDER BY grade_change_requests.id",
+        (student_id,),
+    ).fetchall()
+    known_subjects = db.execute("SELECT DISTINCT subject FROM grades ORDER BY subject").fetchall()
+    return render_template(
+        "student_detail.html",
+        student=student,
+        previous=roster[position - 1] if position > 0 else None,
+        next_student=roster[position + 1] if position + 1 < len(roster) else None,
+        position=position + 1,
+        roster_size=len(roster),
+        corrections={c["grade_id"]: c["new_grade"] for c in corrections},
+        known_subjects=[row["subject"] for row in known_subjects],
+        period=db.execute("SELECT * FROM grading_periods LIMIT 1").fetchone(),
+        error=error,
+    ), status
+
+
+def teacher_error(message, log_label, student_id=None, status=400):
+    """Shows the error on the student the teacher was working on, or on the class list."""
     try:
-        all_students, all_users, dash_period, pending_requests, audit_logs = dashboard_data()
-        grades = db.execute("SELECT grades.*, users.username as student_name FROM grades JOIN users ON grades.student_id = users.id").fetchall()
+        if valid_id(student_id):
+            target = get_db().execute("SELECT id FROM users WHERE id=? AND role='student'", (int(student_id),)).fetchone()
+            if target:
+                return render_student(target["id"], error=message, status=status)
+        return render_roster(error=message, status=status)
     except Exception as e:
-        logging.error(f"{log_label} dashboard render failed err={e}")
+        logging.error(f"{log_label} render failed err={e}")
         return "An error occurred. Please try again.", 500
-    use_period = period if period is not None else dash_period
-    return render_template("dashboard.html", role=user["role"], username=user["username"], grades=grades, students=all_students, all_users=all_users, period=use_period, pending_requests=pending_requests, audit_logs=audit_logs, error=message), 400
+
+
+def grade_owner(db, grade_id):
+    row = db.execute("SELECT student_id FROM grades WHERE id=?", (int(grade_id),)).fetchone()
+    return row["student_id"] if row else None
 
 
 @app.route("/")
@@ -192,6 +348,7 @@ def login():
                 logging.error(f"reset fails failed err={e}")
             audit(user["id"], "LOGIN_SUCCESS", f"User {username} logged in")
             session.clear()
+            session["csrf_token"] = secrets.token_urlsafe(32)
             session["user_id"] = user["id"]
             session["username"] = user["username"]
             session["role"] = user["role"]
@@ -214,6 +371,11 @@ def login():
             error = "Invalid username or password"
 
     return render_template("login.html", error=error)
+
+
+@app.route("/forgot-password")
+def forgot_password():
+    return render_template("forgot_password.html")
 
 
 @app.route("/logout")
@@ -246,22 +408,13 @@ def dashboard():
     if role == "teacher":
         if student_id_param:
             if not valid_id(student_id_param):
-                return render_template("dashboard.html", role=role, username=username, grades=[], students=all_students, all_users=all_users, period=period, pending_requests=pending_requests, audit_logs=audit_logs, error="Invalid input.")
-            try:
-                grades = get_db().execute(
-                    "SELECT grades.*, users.username as student_name FROM grades JOIN users ON grades.student_id = users.id WHERE student_id=?",
-                    (int(student_id_param),),
-                ).fetchall()
-            except Exception as e:
-                logging.error(f"teacher filter failed user={username} err={e}")
-                return render_template("dashboard.html", role=role, username=username, grades=[], students=all_students, all_users=all_users, period=period, pending_requests=pending_requests, audit_logs=audit_logs, error="An error occurred. Please try again.")
-        else:
-            try:
-                grades = get_db().execute("SELECT grades.*, users.username as student_name FROM grades JOIN users ON grades.student_id = users.id").fetchall()
-            except Exception as e:
-                logging.error(f"teacher list failed err={e}")
-                return render_template("dashboard.html", role=role, username=username, grades=[], students=all_students, all_users=all_users, period=period, pending_requests=pending_requests, audit_logs=audit_logs, error="An error occurred. Please try again.")
-        return render_template("dashboard.html", role=role, username=username, grades=grades, students=all_students, all_users=all_users, period=period, pending_requests=pending_requests, audit_logs=audit_logs)
+                return teacher_error("Invalid input.", "teacher filter")
+            return redirect(f"/students/{int(student_id_param)}")
+        try:
+            return render_roster()
+        except Exception as e:
+            logging.error(f"teacher roster failed user={username} err={e}")
+            return "An error occurred. Please try again.", 500
 
     elif role == "academic_admin":
         if student_id_param:
@@ -269,14 +422,14 @@ def dashboard():
                 return render_template("dashboard.html", role=role, username=username, grades=[], students=all_students, all_users=all_users, period=period, pending_requests=pending_requests, audit_logs=audit_logs, error="Invalid input.")
             try:
                 grades = get_db().execute(
-                    "SELECT grades.*, users.username as student_name FROM grades JOIN users ON grades.student_id = users.id WHERE student_id=?",
+                    GRADES_SELECT + " WHERE grades.student_id=?",
                     (int(student_id_param),),
                 ).fetchall()
             except Exception as e:
                 logging.error(f"admin filter failed err={e}")
                 return render_template("dashboard.html", role=role, username=username, grades=[], students=all_students, all_users=all_users, period=period, pending_requests=pending_requests, audit_logs=audit_logs, error="An error occurred. Please try again.")
         else:
-            grades = get_db().execute("SELECT grades.*, users.username as student_name FROM grades JOIN users ON grades.student_id = users.id").fetchall()
+            grades = get_db().execute(GRADES_SELECT).fetchall()
         return render_template("dashboard.html", role=role, username=username, grades=grades, students=all_students, all_users=all_users, period=period, pending_requests=pending_requests, audit_logs=audit_logs)
 
     elif role == "registrar":
@@ -285,18 +438,18 @@ def dashboard():
                 return render_template("dashboard.html", role=role, username=username, grades=[], students=all_students, all_users=all_users, period=period, pending_requests=pending_requests, audit_logs=audit_logs, error="Invalid input.")
             try:
                 grades = get_db().execute(
-                    "SELECT grades.*, users.username as student_name FROM grades JOIN users ON grades.student_id = users.id WHERE student_id=?",
+                    GRADES_SELECT + " WHERE grades.student_id=?",
                     (int(student_id_param),),
                 ).fetchall()
             except Exception as e:
                 logging.error(f"registrar filter failed err={e}")
                 return render_template("dashboard.html", role=role, username=username, grades=[], students=all_students, all_users=all_users, period=period, pending_requests=pending_requests, audit_logs=audit_logs, error="An error occurred. Please try again.")
         else:
-            grades = get_db().execute("SELECT grades.*, users.username as student_name FROM grades JOIN users ON grades.student_id = users.id").fetchall()
+            grades = get_db().execute(GRADES_SELECT).fetchall()
         return render_template("dashboard.html", role=role, username=username, grades=grades, students=all_students, all_users=all_users, period=period, pending_requests=pending_requests, audit_logs=audit_logs)
 
     elif role == "it_admin":
-        grades = get_db().execute("SELECT grades.*, users.username as student_name FROM grades JOIN users ON grades.student_id = users.id").fetchall()
+        grades = get_db().execute(GRADES_SELECT).fetchall()
         return render_template("dashboard.html", role=role, username=username, grades=grades, students=all_students, all_users=all_users, period=period, pending_requests=pending_requests, audit_logs=audit_logs)
 
     else:
@@ -306,7 +459,7 @@ def dashboard():
                 return "Unauthorized", 403
         try:
             grades = get_db().execute(
-                "SELECT grades.*, users.username as student_name FROM grades JOIN users ON grades.student_id = users.id WHERE student_id=?",
+                GRADES_SELECT + " WHERE grades.student_id=?",
                 (user_id,),
             ).fetchall()
         except Exception as e:
@@ -315,32 +468,36 @@ def dashboard():
         return render_template("dashboard.html", role=role, username=username, grades=grades, students=[], all_users=all_users, period=period, pending_requests=pending_requests, audit_logs=audit_logs)
 
 
+@app.route("/students/<int:student_id>")
+@require_role("teacher")
+def student_detail(student_id):
+    try:
+        return render_student(student_id)
+    except Exception as e:
+        logging.error(f"student detail failed id={student_id} err={e}")
+        return "An error occurred. Please try again.", 500
+
+
 @app.route("/add_grade", methods=["POST"])
 @require_role("teacher")
 def add_grade():
     user = current_user()
     db = get_db()
     period = db.execute("SELECT * FROM grading_periods LIMIT 1").fetchone()
-    if period and period["status"] != "open":
-        try:
-            all_students, all_users, _, pending_requests, audit_logs = dashboard_data()
-            grades = db.execute("SELECT grades.*, users.username as student_name FROM grades JOIN users ON grades.student_id = users.id").fetchall()
-        except Exception as e:
-            logging.error(f"locked dashboard render failed err={e}")
-            return "An error occurred. Please try again.", 500
-        return render_template("dashboard.html", role=user["role"], username=user["username"], grades=grades, students=all_students, all_users=all_users, period=period, pending_requests=pending_requests, audit_logs=audit_logs, error=f"Grading period {period['status']}, cannot add grades")
-
     student_id = (request.form.get("student_id", "") or "").strip()
     subject = (request.form.get("subject", "") or "").strip()
     grade = (request.form.get("grade", "") or "").strip()
 
+    if period and period["status"] != "open":
+        return teacher_error(f"Grading period {period['status']}, cannot add grades", "add_grade locked", student_id, 200)
+
     if not valid_id(student_id) or not valid_subject(subject) or not valid_grade(grade):
-        return teacher_error(user, db, period, "Invalid input.", "add_grade validation")
+        return teacher_error("Invalid input.", "add_grade validation", student_id)
 
     try:
         target = db.execute("SELECT id FROM users WHERE id=? AND role='student'", (int(student_id),)).fetchone()
         if not target:
-            return teacher_error(user, db, period, "Invalid input.", "add_grade unknown student")
+            return teacher_error("Invalid input.", "add_grade unknown student")
         db.execute(
             "INSERT INTO grades (student_id, subject, grade, updated_by) VALUES (?, ?, ?, ?)",
             (int(student_id), subject, int(grade), user["username"]),
@@ -351,7 +508,7 @@ def add_grade():
         logging.error(f"add_grade failed user={user['username']} err={e}")
         return "An error occurred. Please try again.", 500
 
-    return redirect("/dashboard")
+    return redirect(f"/students/{int(student_id)}")
 
 
 @app.route("/request-correction", methods=["POST"])
@@ -362,13 +519,13 @@ def request_correction():
     grade_id = (request.form.get("grade_id", "") or "").strip()
     new_grade = (request.form.get("new_grade", "") or "").strip()
 
+    owner = grade_owner(db, grade_id) if valid_id(grade_id) else None
     if not valid_id(grade_id) or not valid_grade(new_grade):
-        return teacher_error(user, db, None, "Invalid input.", "request-correction validation")
+        return teacher_error("Invalid input.", "request-correction validation", owner)
 
     try:
-        exists = db.execute("SELECT id FROM grades WHERE id=?", (int(grade_id),)).fetchone()
-        if not exists:
-            return teacher_error(user, db, None, "Invalid input.", "request-correction unknown grade")
+        if owner is None:
+            return teacher_error("Invalid input.", "request-correction unknown grade")
         db.execute(
             "INSERT INTO grade_change_requests (grade_id, new_grade, requested_by, status) VALUES (?, ?, ?, 'pending')",
             (int(grade_id), int(new_grade), user["username"]),
@@ -379,7 +536,7 @@ def request_correction():
         logging.error(f"request-correction failed err={e}")
         return "An error occurred. Please try again.", 500
 
-    return redirect("/dashboard")
+    return redirect(f"/students/{owner}")
 
 
 @app.route("/update_grade", methods=["POST"])
@@ -391,15 +548,15 @@ def update_grade():
     subject = (request.form.get("subject", "") or "").strip()
     new_grade = (request.form.get("grade", "") or "").strip()
 
+    owner = grade_owner(db, grade_id) if valid_id(grade_id) else None
     if not valid_id(grade_id) or not valid_grade(new_grade):
-        return teacher_error(user, db, None, "Invalid input.", "update_grade validation")
+        return teacher_error("Invalid input.", "update_grade validation", owner)
     if subject and not valid_subject(subject):
-        return teacher_error(user, db, None, "Invalid input.", "update_grade validation")
+        return teacher_error("Invalid input.", "update_grade validation", owner)
 
     try:
-        exists = db.execute("SELECT id FROM grades WHERE id=?", (int(grade_id),)).fetchone()
-        if not exists:
-            return teacher_error(user, db, None, "Invalid input.", "update_grade unknown grade")
+        if owner is None:
+            return teacher_error("Invalid input.", "update_grade unknown grade")
         db.execute(
             "INSERT INTO grade_change_requests (grade_id, new_grade, requested_by, status) VALUES (?, ?, ?, 'pending')",
             (int(grade_id), int(new_grade), user["username"]),
@@ -412,7 +569,7 @@ def update_grade():
         logging.error(f"update_grade failed err={e}")
         return "An error occurred. Please try again.", 500
 
-    return redirect("/dashboard")
+    return redirect(f"/students/{owner}")
 
 
 @app.route("/approvals", methods=["GET"])
@@ -421,7 +578,7 @@ def approvals():
     try:
         db = get_db()
         reqs = db.execute(
-            "SELECT grade_change_requests.*, grades.subject, grades.grade as old_grade, grades.student_id, users.username as student_name "
+            "SELECT grade_change_requests.*, grades.subject, grades.grade as old_grade, grades.student_id, COALESCE(users.full_name, users.username) as student_name "
             "FROM grade_change_requests JOIN grades ON grade_change_requests.grade_id = grades.id "
             "JOIN users ON grades.student_id = users.id WHERE grade_change_requests.status='pending'"
         ).fetchall()
@@ -442,6 +599,8 @@ def approve(req_id):
         req = db.execute("SELECT * FROM grade_change_requests WHERE id=?", (int(req_id),)).fetchone()
         if not req:
             return "Request not found", 404
+        if req["status"] != "pending":
+            return "This correction has already been decided.", 400
         if not valid_grade(req["new_grade"]):
             logging.error(f"approve invalid stored grade req={req_id}")
             return "Invalid input.", 400
@@ -463,6 +622,11 @@ def reject(req_id):
         return "Invalid input.", 400
     try:
         db = get_db()
+        req = db.execute("SELECT status FROM grade_change_requests WHERE id=?", (int(req_id),)).fetchone()
+        if not req:
+            return "Request not found", 404
+        if req["status"] != "pending":
+            return "This correction has already been decided.", 400
         db.execute("UPDATE grade_change_requests SET status='rejected', reviewed_by=? WHERE id=?", (user["username"], int(req_id)))
         db.commit()
         audit(user["id"], "GRADE_REJECTED", f"Rejected request {req_id}")
@@ -497,6 +661,35 @@ def period_lock():
     return redirect("/dashboard")
 
 
+@app.route("/grade-sheet")
+@require_role("teacher")
+def grade_sheet():
+    """The teacher's document: every student against every course, to print for the registrar."""
+    try:
+        db = get_db()
+        roster = class_roster(db)
+        courses = course_averages(db)
+        matrix = {}
+        for s in roster:
+            row = {}
+            for g in sorted(s["grades"], key=lambda g: g["id"]):
+                row[g["subject"]] = g["grade"]   # the latest entry for a course wins
+            matrix[s["id"]] = row
+        all_marks = [g["grade"] for s in roster for g in s["grades"]]
+        return render_template(
+            "grade_sheet.html",
+            roster=roster,
+            courses=courses,
+            subjects=[c["subject"] for c in courses],
+            matrix=matrix,
+            class_average=mean(all_marks),
+            prepared=datetime.date.today().strftime("%d %B %Y").lstrip("0"),
+        )
+    except Exception as e:
+        logging.error(f"grade sheet failed err={e}")
+        return "An error occurred. Please try again.", 500
+
+
 @app.route("/transcript")
 def transcript():
     if "username" not in session:
@@ -509,7 +702,7 @@ def transcript():
         period = db.execute("SELECT * FROM grading_periods LIMIT 1").fetchone()
         if user["role"] == "student":
             grades = db.execute(
-                "SELECT grades.*, users.username as student_name FROM grades JOIN users ON grades.student_id = users.id WHERE student_id=?",
+                GRADES_SELECT + " WHERE grades.student_id=?",
                 (user["id"],),
             ).fetchall()
             return render_template("transcript.html", grades=grades, student_id=user["id"], period=period, certified=False)
@@ -518,16 +711,20 @@ def transcript():
             return "Unauthorized", 403
 
         student_id = (request.args.get("student_id", "") or "").strip()
+        if user["role"] == "teacher" and not student_id:
+            return redirect("/grade-sheet")
         if student_id:
             if not valid_id(student_id):
                 return "Invalid input.", 400
             grades = db.execute(
-                "SELECT grades.*, users.username as student_name FROM grades JOIN users ON grades.student_id = users.id WHERE student_id=?",
+                GRADES_SELECT + " WHERE grades.student_id=?",
                 (int(student_id),),
             ).fetchall()
-            audit(user["id"], "TRANSCRIPT_GENERATE", f"Transcript for student {student_id} period {period['name']}")
-            return render_template("transcript.html", grades=grades, student_id=student_id, period=period, certified=True)
-        grades = db.execute("SELECT grades.*, users.username as student_name FROM grades JOIN users ON grades.student_id = users.id").fetchall()
+            certified = user["role"] == "registrar"
+            if certified:
+                audit(user["id"], "TRANSCRIPT_GENERATE", f"Transcript for student {student_id} period {period['name']}")
+            return render_template("transcript.html", grades=grades, student_id=student_id, period=period, certified=certified, single=True)
+        grades = db.execute(GRADES_SELECT).fetchall()
         return render_template("transcript.html", grades=grades, student_id=student_id, period=period, certified=False)
     except Exception as e:
         logging.error(f"transcript failed user={user['username']} err={e}")
@@ -558,8 +755,8 @@ def admin_reset():
     user = current_user()
     user_id = (request.form.get("user_id", "") or "").strip()
     new_password = request.form.get("new_password", "") or ""
-    if not valid_id(user_id) or len(new_password) > 128:
-        return "Invalid input. Password must be below 128 chars.", 400
+    if not valid_id(user_id) or not 8 <= len(new_password) <= 128:
+        return "Invalid input. Password must be 8 to 128 characters.", 400
     try:
         hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
         db = get_db()
@@ -589,12 +786,12 @@ def view_grades():
                 logging.error(f"view_grades IDOR blocked user={user['username']} tried={student_id}")
                 return "Unauthorized", 403
             grades = db.execute(
-                "SELECT grades.*, users.username as student_name FROM grades JOIN users ON grades.student_id = users.id WHERE student_id=?",
+                GRADES_SELECT + " WHERE grades.student_id=?",
                 (int(student_id),),
             ).fetchall()
         else:
             grades = db.execute(
-                "SELECT grades.*, users.username as student_name FROM grades JOIN users ON grades.student_id = users.id WHERE student_id=?",
+                GRADES_SELECT + " WHERE grades.student_id=?",
                 (user["id"],),
             ).fetchall()
     except Exception as e:

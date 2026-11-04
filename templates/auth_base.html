@@ -1,0 +1,35 @@
+{% import '_ui.html' as ui %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{% endblock %} - {{ ui.COLLEGE }}</title>
+    <link rel="preload" href="{{ url_for('static', filename='fonts/SourceSans3.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="login-page">
+    <main class="login">
+        <section class="login-art" aria-label="{{ ui.COLLEGE }}">
+            <img src="{{ url_for('static', filename='img/scholar-in-his-study.jpg') }}" alt="Etching of a scholar at his desk, turning towards a bright window.">
+            <div class="login-crest">
+                {{ ui.mark() }}
+                <p class="login-college">{{ ui.COLLEGE }}</p>
+            </div>
+            <p class="login-credit">Rembrandt van Rijn, A Scholar in His Study, c. 1652. Art Institute of Chicago, public domain.</p>
+        </section>
+
+        <section class="login-form">
+            <div class="login-body">
+                {% block body %}{% endblock %}
+            </div>
+
+            <footer class="login-foot">
+                <p>{{ ui.OFFICE }}</p>
+                <p>Grade records are confidential, and every login is logged.</p>
+            </footer>
+        </section>
+    </main>
+</body>
+</html>

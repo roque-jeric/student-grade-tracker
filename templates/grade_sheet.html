@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% block title %}Grade sheet{% endblock %}
+
+{% block content %}
+{% import '_ui.html' as ui with context %}
+<header class="page-head no-print">
+    <div>
+        <h1>Grade sheet</h1>
+        <p class="sub">Final grades for every student and course, ready to print or save as PDF for the registrar.</p>
+    </div>
+    <button type="button" class="btn btn-primary" data-print>Print grade sheet</button>
+</header>
+
+<article class="sheet sheet-wide" aria-labelledby="sheet-title">
+    <header class="sheet-head">
+        {{ ui.mark() }}
+        <p class="sheet-college">{{ ui.COLLEGE }}</p>
+        <p class="sheet-office">{{ ui.OFFICE }}</p>
+        <h2 id="sheet-title">Grade Sheet, Final Grades</h2>
+    </header>
+
+    <dl class="sheet-facts">
+        <div><dt>Instructor</dt><dd>{{ shell_name }}</dd></div>
+        <div><dt>Students</dt><dd>{{ roster|length }}</dd></div>
+        <div><dt>Pass mark</dt><dd>{{ pass_mark }}</dd></div>
+        <div><dt>Prepared</dt><dd>{{ prepared }}</dd></div>
+    </dl>
+
+    {% if roster %}
+    <div class="table-wrap">
+        <table class="grade-matrix">
+            <thead>
+                <tr>
+                    <th scope="col">Student</th>
+                    <th scope="col">Student no.</th>
+                    {% for subject in subjects %}<th scope="col" class="num">{{ subject }}</th>{% endfor %}
+                    <th scope="col" class="num">Average</th>
+                    <th scope="col">Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in roster %}
+                <tr>
+                    <th scope="row">{{ s['name'] }}</th>
+                    <td class="text-muted">{{ s['student_no'] or '—' }}</td>
+                    {% for subject in subjects %}
+                    {% set g = matrix[s['id']].get(subject) %}
+                    <td class="num">{% if g is none %}<span class="text-muted">—</span>{% else %}<span class="{{ 'cell-below' if g < pass_mark }}">{{ g }}</span>{% endif %}</td>
+                    {% endfor %}
+                    <td class="num"><strong class="{{ 'cell-below' if s['average'] is not none and s['average'] < pass_mark }}">{{ '%.1f'|format(s['average']) if s['average'] is not none else '—' }}</strong></td>
+                    <td>
+                        {% if s['standing'] == 'below' %}<span class="cell-below">Failed {{ s['below']|length }} course{{ '' if s['below']|length == 1 else 's' }}</span>
+                        {% elif s['standing'] == 'passing' %}Passed
+                        {% else %}<span class="text-muted">No grades</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th scope="row" colspan="2">Course average</th>
+                    {% for c in courses %}<td class="num"><strong>{{ '%.1f'|format(c['average']) }}</strong></td>{% endfor %}
+                    <td class="num"><strong>{{ '%.1f'|format(class_average) if class_average is not none else '—' }}</strong></td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty">No students are enrolled yet.</p>
+    {% endif %}
+
+    <footer class="sheet-sign">
+        <div><span class="sign-line"></span><p>{{ shell_name }}, Instructor</p></div>
+        <div><span class="sign-line"></span><p>Received by the Registrar</p></div>
+    </footer>
+</article>
+{% endblock %}

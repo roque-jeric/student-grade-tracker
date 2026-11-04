@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+{% set period_name = period['name'] if period else 'This' %}
+{% set below = roster|selectattr('standing', 'equalto', 'below')|list %}
+{% set ungraded = roster|selectattr('standing', 'equalto', 'none')|list %}
+{% set waiting = roster|sum(attribute='waiting') %}
+
+{% block title %}Students{% endblock %}
+
+{% block content %}
+{% import '_ui.html' as ui with context %}
+{# Reading order: what needs doing, then the whole class, then the course picture. #}
+<header class="page-head">
+    <div>
+        <h1>Students</h1>
+        <p class="sub">Final grades for your class. Pass mark {{ pass_mark }}.</p>
+    </div>
+</header>
+
+<ul class="stat-tiles" aria-label="Class summary">
+    <li class="stat-tile"><span class="stat-label">Students</span><span class="stat-value">{{ roster|length }}</span></li>
+    <li class="stat-tile"><span class="stat-label">Class average</span><span class="stat-value">{% if class_average is none %}—{% else %}{{ '%.1f'|format(class_average) }}{% endif %}</span></li>
+    <li class="stat-tile"><span class="stat-label">Below the pass mark</span><span class="stat-value{{ ' is-negative' if below }}">{{ below|length }}</span></li>
+    <li class="stat-tile"><span class="stat-label">Not graded yet</span><span class="stat-value">{{ ungraded|length }}</span></li>
+    <li class="stat-tile"><span class="stat-label">Corrections waiting</span><span class="stat-value">{{ waiting }}</span></li>
+</ul>
+
+{% if error %}<p class="notice notice-negative" role="alert">{{ error }}</p>{% endif %}
+
+{% if courses %}
+<section class="course-cards" aria-labelledby="courses-title">
+    <h2 id="courses-title" class="section-title">Course averages</h2>
+    <ul>
+        {% for c in courses %}
+        <li class="course-card">
+            <span class="course-band"><span class="course-name">{{ c['subject'] }}</span><span class="course-count">{{ c['count'] }} grade{{ '' if c['count'] == 1 else 's' }}</span></span>
+            <span class="course-body"><span class="course-avg{{ ' is-negative' if c['average'] < pass_mark }}">{{ '%.1f'|format(c['average']) }}</span>
+            {{ ui.score_bar(c['average'], pass_mark) }}
+            <span class="course-meta">{% if c['below'] %}<span class="text-negative nowrap">{{ c['below'] }} below {{ pass_mark }}</span>{% else %}<span class="nowrap">All passing</span>{% endif %}</span></span>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+
+{% if below %}
+<section class="attention-panel" aria-labelledby="attention-title">
+    <div class="attention-head">
+        <h2 id="attention-title">{{ below|length }} student{{ '' if below|length == 1 else 's' }} below the pass mark</h2>
+        <p class="meta">Under {{ pass_mark }} in at least one course</p>
+    </div>
+    <ul class="attention-list">
+        {% for s in below %}
+        <li>
+            <a href="/students/{{ s['id'] }}">
+                {{ ui.person(s['name'], s['id']) }}
+                <span class="attention-marks">
+                    {% for g in s['below'] %}<span class="mark-chip">{{ g['subject'] }} <strong>{{ g['grade'] }}</strong></span>{% endfor %}
+                </span>
+                <span class="attention-go"><span class="go-label">View grades</span>{{ ui.icon('chevron') }}</span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% elif roster %}
+<p class="all-clear">Every graded student is at or above the {{ pass_mark }} pass mark.</p>
+{% endif %}
+
+<section class="panel panel-flush" aria-labelledby="roster-title">
+    <header class="panel-head">
+        <div>
+            <h2 id="roster-title">All students</h2>
+            <p class="meta" data-roster-count aria-live="polite">{{ roster|length }} student{{ '' if roster|length == 1 else 's' }}, sorted by surname</p>
+        </div>
+        <div class="toolbar" data-roster-tools hidden>
+            <label class="search">
+                <span class="sr-only">Search by name or student number</span>
+                {{ ui.icon('search') }}
+                <input class="control" type="search" placeholder="Name or number" data-roster-search>
+            </label>
+            <label class="sr-only" for="roster-standing">Show</label>
+            <select class="control" id="roster-standing" data-roster-standing>
+                <option value="">Everyone</option>
+                <option value="below">Below passing</option>
+                <option value="passing">Passing</option>
+                <option value="none">Not graded yet</option>
+            </select>
+        </div>
+    </header>
+
+    {% if roster %}
+    <div class="table-wrap">
+        <table class="ledger ledger-roster" data-roster>
+            <colgroup>
+                <col class="w-student"><col class="w-program"><col class="w-lowest"><col class="w-average"><col class="w-go">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th scope="col" aria-sort="ascending"><button type="button" class="th-sort" data-sort="name">Student {{ ui.icon('sort') }}</button></th>
+                    <th scope="col">Programme</th>
+                    <th scope="col">Lowest mark</th>
+                    <th scope="col" class="num"><button type="button" class="th-sort" data-sort="average">Average {{ ui.icon('sort') }}</button></th>
+                    <th scope="col"><span class="sr-only">Open</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in roster %}
+                {% set lowest = s['grades']|sort(attribute='grade')|first if s['grades'] else none %}
+                <tr class="row-link" data-name="{{ s['name']|lower }} {{ s['student_no'] or '' }}" data-order="{{ loop.index }}" data-average="{{ s['average'] if s['average'] is not none else -1 }}" data-standing="{{ s['standing'] }}">
+                    <td class="c-main">
+                        <a href="/students/{{ s['id'] }}">{{ ui.person(s['name'], s['id']) }}</a>
+                        <span class="line-two line-indent">{{ s['student_no'] or '—' }}<span class="phone-only"> · {% if lowest %}lowest {{ lowest['subject'] }} <span class="{{ 'text-negative' if lowest['grade'] < pass_mark }}">{{ lowest['grade'] }}</span>{% else %}not graded yet{% endif %}</span></span>
+                    </td>
+                    <td class="c-by">{{ s['program'] or '—' }}<span class="line-two">{% if s['year_level'] %}Year {{ s['year_level'] }} · {% endif %}{{ s['grades']|length }} course{{ '' if s['grades']|length == 1 else 's' }}</span></td>
+                    <td class="c-by">
+                        {% if lowest %}
+                        <span class="lowest{{ ' is-below' if lowest['grade'] < pass_mark }}"><span class="lowest-grade">{{ lowest['grade'] }}</span> {{ lowest['subject'] }}</span>
+                        {% else %}<span class="text-muted">Not graded yet</span>{% endif %}
+                    </td>
+                    <td class="num c-grade">{% if s['average'] is none %}<span class="text-muted">—</span>{% else %}<span class="grade grade-lg{{ ' is-below' if s['average'] < pass_mark }}">{{ '%.1f'|format(s['average']) }}</span>{% endif %}</td>
+                    <td class="c-go" aria-hidden="true">{{ ui.icon('chevron') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="empty" data-roster-empty hidden>No students match. Clear the search or choose Everyone.</p>
+    {% else %}
+    <p class="empty">No students are enrolled yet.</p>
+    {% endif %}
+</section>
+
+{% endblock %}

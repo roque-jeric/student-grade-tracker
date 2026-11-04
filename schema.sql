@@ -10,7 +10,11 @@ CREATE TABLE users (
     password TEXT NOT NULL,
     role TEXT NOT NULL CHECK(role IN ('student','teacher','academic_admin','registrar','it_admin')),
     is_locked BOOLEAN DEFAULT 0,
-    failed_attempts INTEGER DEFAULT 0
+    failed_attempts INTEGER DEFAULT 0,
+    full_name TEXT,
+    student_no TEXT,
+    program TEXT,
+    year_level INTEGER
 );
 
 CREATE TABLE grades (

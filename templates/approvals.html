@@ -1,53 +1,27 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Approvals - Student Grade Tracker</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>Grade Change Approvals</h1>
-            <a href="/dashboard" class="btn-small">Back to Dashboard</a>
-            <a href="/logout" class="btn-small logout">Logout</a>
-        </div>
-        <div class="card">
-            <h2>Pending Requests</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Req ID</th>
-                        <th>Grade ID</th>
-                        <th>Student</th>
-                        <th>Subject</th>
-                        <th>Old Grade</th>
-                        <th>New Grade</th>
-                        <th>Requested By</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for r in requests %}
-                    <tr>
-                        <td>{{ r['id'] }}</td>
-                        <td>{{ r['grade_id'] }}</td>
-                        <td>{{ r['student_name'] }} (ID: {{ r['student_id'] }})</td>
-                        <td>{{ r['subject'] }}</td>
-                        <td>{{ r['old_grade'] }}</td>
-                        <td>{{ r['new_grade'] }}</td>
-                        <td>{{ r['requested_by'] }}</td>
-                        <td>
-                            <form method="POST" action="/approvals/{{ r['id'] }}/approve" style="display:inline;"><button type="submit" class="btn-small">Approve</button></form>
-                            <form method="POST" action="/approvals/{{ r['id'] }}/reject" style="display:inline;"><button type="submit" class="btn-small" style="background:#f0a0a0;">Reject</button></form>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="8">No pending requests</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+{% extends 'base.html' %}
+{% block title %}Approvals{% endblock %}
+
+{% block content %}
+{% import '_ui.html' as ui with context %}
+<div class="title-row">
+    <div>
+        <h1>Approvals</h1>
+        <p class="sub">
+            {% if requests %}{{ requests|length }} correction{{ '' if requests|length == 1 else 's' }} need{{ 's' if requests|length == 1 else '' }} your decision.
+            {% else %}Every correction has been decided.{% endif %}
+        </p>
     </div>
-</body>
-</html>
+</div>
+
+<section class="panel panel-flush" aria-labelledby="queue-title">
+    <header class="panel-head">
+        <h2 id="queue-title">Corrections to decide</h2>
+        <p class="meta">An approved correction replaces the grade on the record.</p>
+    </header>
+    {% if requests %}
+    {{ ui.pending_rows(requests, show_ids=True) }}
+    {% else %}
+    <p class="empty">No corrections are waiting.</p>
+    {% endif %}
+</section>
+{% endblock %}

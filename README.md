@@ -1,18 +1,19 @@
 # Student Grade Tracker — Secured Version
 
-5 roles, Prelim single period, secured per hardening requirements. Fresh DB with bcrypt hashes.
+Branded for Aldermere College, a fictional institution. Its name lives at the top of `templates/_ui.html`.
 
-## Roles (6 users seeded, password pass123 hashed with bcrypt+salt)
+5 roles, one Final grading period, secured per hardening requirements. Fresh DB with bcrypt hashes.
+
+## Roles (16 users seeded, password pass123 hashed with bcrypt+salt)
 | Username | Role |
 |----------|------|
 | teacher1 | teacher |
-| student1 | student |
-| student2 | student |
+| student1 to student12 | student |
 | academic_admin1 | academic_admin |
 | registrar1 | registrar |
 | it_admin1 | it_admin |
 
-Single period: `Prelim` (open/locked/archived) - registrar locks all grades at once.
+Single period: `Final` (open/locked/archived). The grades on record are final grades; the registrar locks them all at once.
 
 ## Security Fixes Applied
 - Password hashing + salting with bcrypt (`init_db.py`, `app.py` login + admin reset). No plaintext storage.
@@ -23,28 +24,43 @@ Single period: `Prelim` (open/locked/archived) - registrar locks all grades at o
 - Strict server-side role verification: `current_user()` reloads DB each request + `@require_role` on teacher/admin/registrar/it_admin functions.
 - Account lock: 5 fails -> locked (applies to all roles including it_admin).
 - XSS fix: removed `| safe` from all templates (autoescape).
+- CSRF: every POST form carries a per-session token, checked with `secrets.compare_digest`; a missing or wrong token is refused with 400.
+- Only the registrar can produce a certified transcript; teachers and the academic admin get a working copy.
+- Password reset length (8 to 128) is enforced on the server.
+- A correction can be approved or rejected only while it is pending.
 
 ## Setup
 ```powershell
 pip install -r requirements.txt
-python init_db.py
+python init_db.py   # new install only: this deletes database.db and recreates it
 python app.py
 # http://127.0.0.1:5001
 ```
 
+To upgrade an existing `database.db` without losing anything, run `python migrate_db.py` once instead of `init_db.py`. It saves a copy to `database.db.bak`, then adds the profile columns and the sample class. The names, student numbers and programmes in `sample_data.py` are invented.
+
+## Settings to replace
+- IT office phone, email, building and hours (`IT_OFFICE` at the top of `templates/_ui.html`) are sample details.
+- The pass mark is `PASS_MARK = 75` in `app.py`.
+
 ## Demo Flows
 1. **Lockout:** student1 wrong 5x -> locked -> it_admin1 dashboard Unlock
-2. **Teacher Add:** teacher1 Add Grade 95 ok, 999 rejected 400, `'; DROP` rejected 400
-3. **Correction:** teacher edit -> pending -> academic_admin Approve stays on /dashboard
-4. **IDOR blocked:** student1 `/dashboard?student_id=3` -> 403
-5. **SQLi blocked:** `' OR '1'='1' -- ` -> Invalid, no Dashboard
-6. **Registrar Lock:** Prelim locked -> teacher Add stays on dashboard with error
-7. **Transcript:** registrar `/transcript?student_id=2` certified table (no cert number)
-8. **IT Admin:** dashboard unlock/reset (reset needs 8+ chars, bcrypt hashed)
+2. **Forgot password:** Login -> Forgot password? -> IT office phone, email and room. it_admin1 finds the student by name or number and resets it
+3. **Teacher roster:** teacher1 lands on all students. Click a student to see their grades per course
+4. **Teacher Add:** on a student, Add grade 95 ok, 999 rejected 400, `'; DROP` rejected 400
+5. **Correction:** teacher Correct on a course -> pending -> academic_admin Approve stays on /dashboard
+6. **IDOR blocked:** student1 `/dashboard?student_id=3` -> 403, `/students/3` -> 403
+7. **SQLi blocked:** `' OR '1'='1' -- ` -> Invalid, no Dashboard
+8. **Registrar Lock:** Final grades locked -> Add grade is hidden and a direct post is refused on the student page
+9. **Transcript:** registrar `/transcript?student_id=2` certified table (no cert number). Teachers print a grade sheet (`/grade-sheet`) instead
+10. **IT Admin:** dashboard unlock/reset (reset needs 8+ chars, bcrypt hashed)
 
 ## Project Structure
 ```
-app.py (secured), schema.sql, init_db.py (bcrypt), database.db (fresh)
-templates/login, dashboard (5 roles), view_grades, approvals, transcript
-static/style.css (beginner plain), requirements.txt, app.log (private errors)
+app.py (secured), schema.sql, init_db.py (bcrypt), migrate_db.py, sample_data.py, database.db
+templates/base (masthead and tabs), auth_base (login layout), _ui (macros, college and IT office details)
+templates/login, forgot_password, students (teacher roster), student_detail (grades per course), grade_sheet (teacher's class record), dashboard (other roles), view_grades, approvals, transcript
+static/style.css, static/app.js (menu, dialogs, roster search and sort, print), static/fonts (self-hosted Source Sans 3 and EB Garamond, OFL licences)
+static/img (Rembrandt, A Scholar in His Study, c. 1652, Art Institute of Chicago, CC0)
+requirements.txt, app.log (private errors)
 ```

@@ -1,0 +1,168 @@
+{% extends 'base.html' %}
+{% set status = period['status'] if period else '' %}
+{% set period_name = period['name'] if period else 'This' %}
+{% set first_name = student['name'].split()[0] %}
+{% set can_add = status == 'open' or not status %}
+
+{% block title %}{{ student['name'] }}{% endblock %}
+
+{% block content %}
+{% import '_ui.html' as ui with context %}
+{# Reading order: who, how they are doing, then each course with its one action. #}
+<nav class="crumbs" aria-label="Student navigation">
+    <a class="back-link" href="/dashboard">{{ ui.icon('back') }}<span>All students</span></a>
+    <div class="crumbs-step">
+        <span class="meta">{{ position }} of {{ roster_size }}</span>
+        {% if previous %}<a class="btn btn-quiet" href="/students/{{ previous['id'] }}" rel="prev">{{ ui.icon('back') }}<span>Previous</span><span class="sr-only"> student, {{ previous['name'] }}</span></a>{% endif %}
+        {% if next_student %}<a class="btn btn-quiet" href="/students/{{ next_student['id'] }}" rel="next"><span>Next</span><span class="sr-only"> student, {{ next_student['name'] }}</span>{{ ui.icon('chevron') }}</a>{% endif %}
+    </div>
+</nav>
+
+<section class="profile-card" aria-labelledby="student-name">
+    <div class="profile">
+        <span class="person-chip person-chip-large" style="--h:{{ (student['id'] * 67) % 360 }}" aria-hidden="true">{{ student['name'].split()[0][0]|upper }}{{ student['name'].split()[-1][0]|upper }}</span>
+        <div>
+            <h1 id="student-name">{{ student['name'] }}</h1>
+            <p class="sub">{{ student['student_no'] or 'No student number' }}{% if student['program'] %} · {{ student['program'] }}{% endif %}{% if student['year_level'] %} · Year {{ student['year_level'] }}{% endif %}</p>
+        </div>
+    </div>
+    <dl class="profile-stats">
+        <div class="stat-lead">
+            <dt>Final average</dt>
+            {% if student['average'] is none %}<dd class="text-muted">—</dd>
+            {% else %}<dd class="{{ 'is-negative' if student['average'] < pass_mark }}">{{ '%.1f'|format(student['average']) }}</dd>{% endif %}
+        </div>
+        <div>
+            <dt>Standing</dt>
+            <dd>{% if student['standing'] == 'below' %}<span class="pill pill-negative">{{ student['below']|length }} below passing</span>{% elif student['standing'] == 'passing' %}<span class="pill pill-positive">Passing</span>{% else %}<span class="text-muted">Not graded yet</span>{% endif %}</dd>
+        </div>
+        <div>
+            <dt>Courses</dt>
+            <dd>{{ student['grades']|length }}</dd>
+        </div>
+        {% if student['waiting'] %}
+        <div>
+            <dt>Corrections</dt>
+            <dd>{{ student['waiting'] }} waiting</dd>
+        </div>
+        {% endif %}
+    </dl>
+</section>
+
+{% if error %}<p class="notice notice-negative" role="alert">{{ error }}</p>{% endif %}
+{% if not can_add %}<p class="notice notice-warning">Final grades are {{ status }} by the registrar, so new grades can't be added. Corrections can still be requested.</p>{% endif %}
+
+<section class="panel panel-flush" aria-labelledby="grades-title">
+    <header class="panel-head">
+        <div>
+            <h2 id="grades-title">Final grades by course</h2>
+            <p class="meta">Out of 100 · the gold tick is the pass mark, {{ pass_mark }}</p>
+        </div>
+        {% if can_add %}<button type="button" class="btn btn-primary" data-open="add-grade">Add grade</button>{% endif %}
+    </header>
+
+    {% if student['grades'] %}
+    <div class="table-wrap">
+        <table class="ledger ledger-record">
+            <colgroup>
+                <col class="w-course"><col class="w-grade"><col class="w-remark"><col class="w-action">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th scope="col">Course</th>
+                    <th scope="col">Grade</th>
+                    <th scope="col">Remarks</th>
+                    <th scope="col"><span class="sr-only">Action</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for g in student['grades']|sort(attribute='subject') %}
+                {% set corrected = corrections.get(g['id']) %}
+                <tr>
+                    <td class="c-main">
+                        <span class="course-title">{{ g['subject'] }}</span>
+                        <span class="line-two">Entered by {{ g['updated_by'] }}</span>
+                        <span class="line-two phone-only">{% if corrected is not none %}Awaiting approval{% elif g['grade'] < pass_mark %}<span class="text-negative">Below passing</span>{% else %}Passed{% endif %}</span>
+                    </td>
+                    <td class="c-grade">
+                        <span class="grade-cell">
+                            {% if corrected is not none %}{{ ui.correction(g['grade'], corrected) }}{% else %}<span class="grade grade-lg{{ ' is-below' if g['grade'] < pass_mark }}">{{ g['grade'] }}</span>{% endif %}
+                            <span class="grade-bar-wrap">{{ ui.score_bar(g['grade'], pass_mark) }}</span>
+                        </span>
+                    </td>
+                    <td class="c-by">
+                        {% if corrected is not none %}<span class="pill pill-warning">Awaiting approval</span>{% else %}{{ ui.remark(g['grade'], pass_mark) }}{% endif %}
+                    </td>
+                    <td class="c-action">
+                        <button type="button" class="btn btn-quiet" data-open="slip-{{ g['id'] }}">Correct<span class="sr-only"> {{ g['subject'] }}</span></button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p><strong>No grades yet for {{ first_name }}.</strong></p>
+        <p class="meta">{% if can_add %}Final grades you add appear here, with a remark against the pass mark.{% else %}Final grades are {{ status }}, so grades can't be added now.{% endif %}</p>
+        {% if can_add %}<button type="button" class="btn btn-primary" data-open="add-grade">Add the first grade</button>{% endif %}
+    </div>
+    {% endif %}
+</section>
+
+{% if can_add %}
+<dialog class="slip" id="add-grade" aria-labelledby="add-title">
+    <form method="POST" action="/add_grade" class="stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="student_id" value="{{ student['id'] }}">
+        <header>
+            <h2 id="add-title">Add grade</h2>
+            <p class="meta">Final grade for {{ student['name'] }}</p>
+        </header>
+        <div class="field">
+            <label for="subject">Course</label>
+            <input class="control" type="text" name="subject" id="subject" list="known-subjects" maxlength="50" autocomplete="off" required>
+            <datalist id="known-subjects">
+                {% for s in known_subjects %}<option value="{{ s }}"></option>{% endfor %}
+            </datalist>
+        </div>
+        <div class="field">
+            <label for="grade">Grade</label>
+            <input class="control control-grade" type="number" name="grade" id="grade" aria-describedby="grade-note" required>
+            <p class="hint" id="grade-note">A whole number from 0 to 100.</p>
+        </div>
+        <div class="slip-actions">
+            <button type="button" class="btn" data-close>Cancel</button>
+            <button type="submit" class="btn btn-primary">Add grade</button>
+        </div>
+    </form>
+</dialog>
+{% endif %}
+
+{% for g in student['grades'] %}
+<dialog class="slip" id="slip-{{ g['id'] }}" aria-labelledby="slip-title-{{ g['id'] }}">
+    <form method="POST" action="/update_grade" class="stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="grade_id" value="{{ g['id'] }}">
+        <header>
+            <h2 id="slip-title-{{ g['id'] }}">Correct {{ g['subject'] }}</h2>
+            <p class="meta">{{ student['name'] }}, record <code>#{{ g['id'] }}</code></p>
+        </header>
+        <div class="slip-preview" data-preview data-was="{{ g['grade'] }}" aria-live="polite">
+            <span class="grade">{{ g['grade'] }}</span>
+        </div>
+        <div class="field">
+            <label for="new-grade-{{ g['id'] }}">Corrected grade</label>
+            <input class="control control-grade" type="number" id="new-grade-{{ g['id'] }}" name="grade" value="{{ g['grade'] }}" aria-describedby="slip-note-{{ g['id'] }}" required>
+        </div>
+        <div class="field">
+            <label for="new-subject-{{ g['id'] }}">Course</label>
+            <input class="control" type="text" id="new-subject-{{ g['id'] }}" name="subject" value="{{ g['subject'] }}" aria-describedby="slip-note-{{ g['id'] }}" required>
+        </div>
+        <p class="hint" id="slip-note-{{ g['id'] }}">The grade changes only after the academic admin approves it. A new course name applies straight away.</p>
+        <div class="slip-actions">
+            <button type="button" class="btn" data-close>Cancel</button>
+            <button type="submit" class="btn btn-primary">Send for approval</button>
+        </div>
+    </form>
+</dialog>
+{% endfor %}
+{% endblock %}

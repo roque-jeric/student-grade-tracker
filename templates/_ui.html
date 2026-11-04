@@ -1,0 +1,137 @@
+{# Shared pieces: the person chip, the correction mark, the pass line and the period track. #}
+
+{# The institution. Aldermere College is fictional: change these lines to adopt the app. #}
+{% set COLLEGE = 'Aldermere College' %}
+{% set OFFICE = 'Office of the College Registrar' %}
+{% set PORTAL = 'Student Grade Tracker' %}
+
+{# Shown on the forgot-password page. All sample details: replace them with the real office. #}
+{% set IT_OFFICE = {
+    'name': 'IT Services Office',
+    'phone': '(555) 010-0142',
+    'phone_link': '+15550100142',
+    'email': 'itsupport@aldermere.example',
+    'building': 'Whitlock Hall, Room 104',
+    'campus': 'Main Campus',
+    'hours': 'Monday to Friday, 8:00 AM to 5:00 PM'
+} %}
+
+{% set ROLE_LABELS = {
+    'teacher': 'Teacher',
+    'student': 'Student',
+    'academic_admin': 'Academic admin',
+    'registrar': 'Registrar',
+    'it_admin': 'IT admin'
+} %}
+
+{# The crest: an alder leaf over the water of the mere, on a shield. #}
+{% macro mark() %}
+<svg class="mark" viewBox="0 0 32 36" fill="none" aria-hidden="true">
+    <path d="M3 3h26v16c0 7.500-5.500 12.500-13 15C8.500 31.500 3 26.500 3 19V3Z" stroke="currentColor" stroke-width="1.75"/>
+    <path d="M16 6.500c-4.200 3.200-5.800 6.600-5 10 .6 2.400 2.700 4 5 4.500 2.300-.5 4.400-2.100 5-4.500.8-3.400-.8-6.800-5-10Z" fill="currentColor"/>
+    <path d="M16 11v12" stroke="var(--crest-vein, #fff)" stroke-width="1.100"/>
+    <path d="M8 26c1.300-1.100 2.700-1.100 4 0s2.700 1.100 4 0 2.700-1.100 4 0 2.700 1.100 4 0" stroke="var(--crest-water, var(--gold))" stroke-width="1.500"/>
+</svg>
+{% endmacro %}
+
+{% macro icon(name) %}
+<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    {% if name == 'menu' %}<path d="M2.500 4.500h11M2.500 8h11M2.500 11.500h11"/>
+    {% elif name == 'close' %}<path d="m3.500 3.500 9 9M12.500 3.500l-9 9"/>
+    {% elif name == 'chevron' %}<path d="m6 3.500 4.500 4.500L6 12.500"/>
+    {% elif name == 'back' %}<path d="M10 3.500 5.500 8l4.500 4.500"/>
+    {% elif name == 'search' %}<path d="M7 12A5 5 0 1 0 7 2a5 5 0 0 0 0 10ZM10.700 10.700 14 14"/>
+    {% elif name == 'sort' %}<path d="m4.500 6 3.500-3.500L11.500 6M4.500 10 8 13.500 11.500 10"/>
+    {% endif %}
+</svg>
+{% endmacro %}
+
+{# A person keeps one set of initials and one pale tint, keyed to their id. #}
+{% macro person(name, id=None) %}
+{% set parts = name.split() %}
+<span class="person">
+    {%- if id is not none %}<span class="person-chip" style="--h:{{ (id * 67) % 360 }}" aria-hidden="true">{% if parts|length > 1 %}{{ parts[0][0]|upper }}{{ parts[-1][0]|upper }}{% else %}{{ name[0]|upper }}{{ name[-1] if name[-1].isdigit() else '' }}{% endif %}</span>{% endif -%}
+    <span class="person-name">{{ name }}</span>
+</span>
+{% endmacro %}
+
+{# The correction as it would look on a paper record: old figure struck, new one beside it. #}
+{% macro correction(old, new) %}
+{% set change = new - old %}
+<span class="correction">
+    <s class="correction-old"><span class="sr-only">from </span>{{ old }}</s>
+    <span class="correction-new"><span class="sr-only">to </span>{{ new }}</span>
+    <span class="correction-change">{{ '+' if change > 0 else ('−' if change < 0 else '') }}{{ change|abs }}</span>
+</span>
+{% endmacro %}
+
+{# The pass line: one mark on a 0 to 100 track, with a tick at the pass mark. #}
+{% macro score_bar(grade, pass_mark) %}
+<span class="score{{ ' is-below' if grade < pass_mark }}" style="--grade:{{ grade }}%;--pass:{{ pass_mark }}%" aria-hidden="true"><span class="score-fill"></span><span class="score-tick"></span></span>
+{% endmacro %}
+
+{% macro remark(grade, pass_mark) %}
+{% if grade < pass_mark %}<span class="pill pill-negative">Below passing</span>{% else %}<span class="remark-pass">Passed</span>{% endif %}
+{% endmacro %}
+
+{% macro period_track(status, compact=False) %}
+{% set stages = [('open', 'Open'), ('locked', 'Locked'), ('archived', 'Archived')] %}
+{% set reached = {'open': 1, 'locked': 2, 'archived': 3}.get(status, 0) %}
+<ol class="track{{ ' track-compact' if compact }}">
+    {% for key, label in stages %}
+    <li class="{{ 'is-reached' if loop.index <= reached }}"{% if key == status %} aria-current="step"{% endif %}>
+        <span class="track-label">{{ label }}</span>
+    </li>
+    {% endfor %}
+</ol>
+{% endmacro %}
+
+{% macro pending_rows(rows, show_ids=False) %}
+<div class="table-wrap">
+    <table class="ledger ledger-pending">
+        <thead>
+            <tr>
+                <th scope="col">Student and subject</th>
+                <th scope="col">Requested by</th>
+                {% if show_ids %}<th scope="col">Request</th>{% endif %}
+                <th scope="col" class="num">Correction</th>
+                <th scope="col"><span class="sr-only">Decision</span></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr>
+                <td class="c-main">
+                    {{ person(r['student_name'], r['student_id']) }}
+                    <span class="line-two">{{ r['subject'] }}<span class="phone-only"> · {{ r['requested_by'] }}</span></span>
+                </td>
+                <td class="c-by">{{ r['requested_by'] }}</td>
+                {% if show_ids %}<td class="c-id"><code>#{{ r['id'] }}</code> <span class="line-two">grade #{{ r['grade_id'] }}</span></td>{% endif %}
+                <td class="num c-grade">{{ correction(r['old_grade'], r['new_grade']) }}</td>
+                <td class="c-action">
+                    <div class="row-actions">
+                        <form method="POST" action="/approvals/{{ r['id'] }}/approve"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn btn-primary">Approve</button></form>
+                        <form method="POST" action="/approvals/{{ r['id'] }}/reject"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn">Reject</button></form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}
+
+{# A student filter for staff screens, using the dashboard's existing ?student_id= parameter. #}
+{% macro student_filter(students) %}
+{% set chosen = request.args.get('student_id', '') %}
+<form method="GET" action="/dashboard" class="filter">
+    <label for="filter-student" class="sr-only">Show grades for</label>
+    <select name="student_id" id="filter-student" class="control">
+        <option value="">All students</option>
+        {% for s in students %}
+        <option value="{{ s['id'] }}"{% if s['id']|string == chosen %} selected{% endif %}>{{ s['full_name'] }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="btn">Show</button>
+</form>
+{% endmacro %}

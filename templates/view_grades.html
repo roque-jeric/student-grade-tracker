@@ -1,44 +1,43 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>View Grades - Student Grade Tracker</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>View Grades</h1>
-            <div style="text-align:center; margin:5px 0;"><a href="/dashboard" class="btn-small">Back to Dashboard</a></div>
-            <a href="/logout" class="btn-small logout">Logout</a>
-        </div>
+{% extends 'base.html' %}
+{% block title %}View grades{% endblock %}
 
-        <div class="card">
-            <h2>Grades for student_id = {{ student_id if student_id else " (your own)" }}</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Student</th>
-                        <th>Subject</th>
-                        <th>Grade</th>
-                        <th>Updated By</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for g in grades %}
-                    <tr>
-                        <td>{{ g['student_name'] }} (ID: {{ g['student_id'] }})</td>
-                        <td>{{ g['subject'] }}</td>
-                        <td>{{ g['grade'] }}</td>
-                        <td>{{ g['updated_by'] }}</td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="4">No grades found for this student.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+{% block content %}
+{% import '_ui.html' as ui with context %}
+<div class="title-row">
+    <div>
+        <h1>{% if grades %}Grades for {{ grades[0]['student_name'] }}{% elif student_id %}Grades for student {{ student_id }}{% else %}My grades{% endif %}</h1>
+        <p class="sub">{{ grades|length }} grade{{ '' if grades|length == 1 else 's' }} on the record.</p>
     </div>
-</body>
-</html>
+</div>
+
+<section class="panel panel-flush panel-narrow" aria-labelledby="view-title">
+    <header class="panel-head">
+        <h2 id="view-title">Subjects</h2>
+        <p class="meta">Out of 100</p>
+    </header>
+    {% if grades %}
+    <div class="table-wrap">
+        <table class="ledger ledger-plain">
+            <thead>
+                <tr>
+                    <th scope="col">Subject</th>
+                    <th scope="col">Entered by</th>
+                    <th scope="col" class="num">Grade</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for g in grades %}
+                <tr>
+                    <td class="c-main">{{ g['subject'] }}<span class="line-two phone-only">{{ g['updated_by'] }}</span></td>
+                    <td class="c-by">{{ g['updated_by'] }}</td>
+                    <td class="num c-grade"><span class="grade">{{ g['grade'] }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty">No grades found for this student.</p>
+    {% endif %}
+</section>
+{% endblock %}

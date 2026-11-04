@@ -1,0 +1,82 @@
+{% import '_ui.html' as ui %}
+{% set role = session.get('role') %}
+{% set username = session.get('username') %}
+{% set display_name = shell_name or username or '' %}
+{% set name_parts = display_name.replace('Prof. ', '').replace('Dr. ', '').split() %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{% endblock %} - {{ ui.COLLEGE }}</title>
+    <link rel="preload" href="{{ url_for('static', filename='fonts/SourceSans3.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="{{ url_for('static', filename='fonts/EBGaramond.woff2') }}" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</head>
+<body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    {# One slim bar: the college, where you can go, the period, and you. #}
+    <header class="topbar">
+        <div class="topbar-in">
+            <a class="brand" href="/dashboard">
+                {{ ui.mark() }}
+                <span class="brand-text"><span class="brand-name">{{ ui.COLLEGE }}</span><span class="brand-sub">{{ ui.PORTAL }}</span></span>
+            </a>
+
+            <div class="nav-sheet" id="site-nav">
+                <div class="menu-head">
+                    <span class="account-who"><span class="account-name">{{ display_name }}</span><span class="account-role">{{ ui.ROLE_LABELS.get(role, role) }}</span></span>
+                    <button type="button" class="icon-btn" data-menu-close aria-label="Close menu">{{ ui.icon('close') }}</button>
+                </div>
+                <nav class="tabs" aria-label="Main">
+                    {% macro item(href, label, count=0, also='') %}
+                    <a class="tab" href="{{ href }}"{% if request.path == href or (also and request.path.startswith(also)) %} aria-current="page"{% endif %}>
+                        <span>{{ label }}</span>
+                        {% if count %}<span class="tab-count" aria-label="{{ count }} waiting">{{ count }}</span>{% endif %}
+                    </a>
+                    {% endmacro %}
+
+                    {% if role == 'teacher' %}
+                        {{ item('/dashboard', 'Students', also='/students/') }}
+                        {{ item('/grade-sheet', 'Grade sheet') }}
+                    {% elif role == 'academic_admin' %}
+                        {{ item('/dashboard', 'Grades') }}
+                        {{ item('/approvals', 'Approvals', shell_pending or 0) }}
+                        {{ item('/transcript', 'Transcripts') }}
+                    {% elif role == 'registrar' %}
+                        {{ item('/dashboard', 'Grading period') }}
+                        {{ item('/transcript', 'Transcripts') }}
+                    {% elif role == 'it_admin' %}
+                        {{ item('/dashboard', 'Accounts') }}
+                    {% else %}
+                        {{ item('/dashboard', 'My grades') }}
+                        {{ item('/transcript', 'My transcript') }}
+                    {% endif %}
+                </nav>
+                {% if shell_period and shell_period['status'] != 'open' %}
+                <p class="period-chip">{{ shell_period['name'] }} grades {{ shell_period['status'] }}</p>
+                {% endif %}
+                <a class="tab menu-logout" href="/logout">Log out</a>
+            </div>
+
+            <div class="account">
+                <span class="avatar" aria-hidden="true">{% if name_parts|length > 1 %}{{ name_parts[0][0]|upper }}{{ name_parts[-1][0]|upper }}{% elif name_parts %}{{ name_parts[0][0]|upper }}{% endif %}</span>
+                <span class="account-who"><span class="account-name">{{ display_name }}</span><span class="account-role">{{ ui.ROLE_LABELS.get(role, role) }}</span></span>
+                <a class="btn btn-quiet btn-sm" href="/logout">Log out</a>
+            </div>
+            <button type="button" class="icon-btn menu-btn" data-menu aria-controls="site-nav" aria-expanded="false" aria-label="Open menu">{{ ui.icon('menu') }}</button>
+        </div>
+    </header>
+
+    <main class="canvas" id="main">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-foot no-print">
+        <p>{{ ui.COLLEGE }}, {{ ui.OFFICE }}</p>
+        <p>Grade records are confidential. Need help? <a href="/forgot-password">Contact the {{ ui.IT_OFFICE.name }}</a></p>
+    </footer>
+</body>
+</html>
