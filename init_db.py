@@ -22,6 +22,7 @@ users = [
     ("academic_admin1", "pass123", "academic_admin"),
     ("registrar1", "pass123", "registrar"),
     ("it_admin1", "pass123", "it_admin"),
+    ("it_admin2", "pass123", "it_admin"),
 ]
 
 for username, password, role in users:

@@ -186,7 +186,8 @@
     <div>
         <h1>Accounts</h1>
         <p class="sub">
-            {% if locked %}{{ locked|length }} account{{ '' if locked|length == 1 else 's' }} locked: {{ locked|map(attribute='username')|join(', ') }}.
+            {{ all_users|length }} accounts across {{ ui.ROLE_GROUPS|length }} roles.
+            {% if locked %}{{ locked|length }} locked: {{ locked|map(attribute='username')|join(', ') }}.
             {% else %}No accounts are locked.{% endif %}
         </p>
     </div>
@@ -195,48 +196,25 @@
 {% if error %}<p class="notice notice-negative" role="alert">{{ error }}</p>{% endif %}
 
 <div class="blocks">
-    <section class="panel panel-flush" aria-labelledby="accounts-title">
-        <header class="panel-head">
-            <h2 id="accounts-title">User accounts</h2>
-            <p class="meta">{{ all_users|length }} accounts</p>
-        </header>
-        <div class="table-wrap">
-            <table class="ledger ledger-accounts">
-                <thead>
-                    <tr>
-                        <th scope="col">User</th>
-                        <th scope="col">Role</th>
-                        <th scope="col">Access</th>
-                        <th scope="col" class="num">Failed logins</th>
-                        <th scope="col"><span class="sr-only">Actions</span></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for u in all_users %}
-                    <tr>
-                        <td class="c-main">
-                            {{ ui.person(u['username'], u['id']) }}
-                            {% if u['full_name'] %}<span class="line-two line-indent">{{ u['full_name'] }}{% if u['student_no'] %} · {{ u['student_no'] }}{% endif %}</span>{% endif %}
-                            <span class="line-two phone-only">{{ ui.ROLE_LABELS.get(u['role'], u['role']) }} · {{ u['failed_attempts'] }} of 5 failed logins{% if u['is_locked'] %} · Locked{% endif %}</span>
-                        </td>
-                        <td class="c-by">{{ ui.ROLE_LABELS.get(u['role'], u['role']) }}</td>
-                        <td class="c-by">{% if u['is_locked'] %}<span class="pill pill-negative">Locked</span>{% else %}<span class="text-muted">Active</span>{% endif %}</td>
-                        <td class="num c-by">{{ u['failed_attempts'] }} <span class="text-muted">of 5</span></td>
-                        <td class="c-action">
-                            <div class="row-actions">
-                                {% if u['is_locked'] or u['failed_attempts'] %}
-                                <form method="POST" action="/admin/unlock"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <input type="hidden" name="user_id" value="{{ u['id'] }}">
-                                    <button type="submit" class="btn{{ ' btn-primary' if u['is_locked'] }}">Unlock<span class="sr-only"> {{ u['username'] }}</span></button>
-                                </form>
-                                {% endif %}
-                                <button type="button" class="btn" data-open="reset-{{ u['id'] }}">Reset password<span class="sr-only"> for {{ u['username'] }}</span></button>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+    <section aria-labelledby="roles-title">
+        <h2 id="roles-title" class="sr-only">Account roles</h2>
+        <div class="role-cards">
+            {% for group_role, group_label in ui.ROLE_GROUPS %}
+            {% set members = all_users|selectattr('role', 'equalto', group_role)|list %}
+            {% set group_locked = members|selectattr('is_locked')|list|length %}
+            <article class="role-card" aria-labelledby="role-{{ group_role }}">
+                <div class="role-card-head">
+                    <h2 id="role-{{ group_role }}">{{ group_label }}</h2>
+                    <span class="role-card-count">{{ members|length }}</span>
+                </div>
+                <p class="role-card-meta">account{{ '' if members|length == 1 else 's' }}</p>
+                <p class="role-card-status">
+                    {% if group_locked %}<span class="pill pill-negative">{{ group_locked }} locked</span>
+                    {% else %}<span class="text-muted">All active</span>{% endif %}
+                </p>
+                <a class="btn" href="/admin/accounts/{{ group_role }}">View accounts<span class="sr-only"> for {{ group_label }}</span></a>
+            </article>
+            {% endfor %}
         </div>
     </section>
 
@@ -276,27 +254,6 @@
         {% endif %}
     </section>
 </div>
-
-{% for u in all_users %}
-<dialog class="slip" id="reset-{{ u['id'] }}" aria-labelledby="reset-title-{{ u['id'] }}">
-    <form method="POST" action="/admin/reset" class="stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="user_id" value="{{ u['id'] }}">
-        <header>
-            <h2 id="reset-title-{{ u['id'] }}">Reset password</h2>
-            <p class="meta">{{ u['username'] }}, {{ ui.ROLE_LABELS.get(u['role'], u['role']) }}</p>
-        </header>
-        <div class="field">
-            <label for="new-password-{{ u['id'] }}">New password</label>
-            <input class="control" type="password" id="new-password-{{ u['id'] }}" name="new_password" minlength="8" maxlength="128" autocomplete="new-password" aria-describedby="reset-note-{{ u['id'] }}" required>
-            <p class="hint" id="reset-note-{{ u['id'] }}">8 to 128 characters. This also unlocks the account.</p>
-        </div>
-        <div class="slip-actions">
-            <button type="submit" class="btn btn-primary">Reset password</button>
-            <button type="button" class="btn" data-close>Cancel</button>
-        </div>
-    </form>
-</dialog>
-{% endfor %}
 
 {% else %}
 {# ---------- Student: my grades this period ---------- #}

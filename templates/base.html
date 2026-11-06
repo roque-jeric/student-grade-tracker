@@ -49,7 +49,7 @@
                         {{ item('/dashboard', 'Grading period') }}
                         {{ item('/transcript', 'Transcripts') }}
                     {% elif role == 'it_admin' %}
-                        {{ item('/dashboard', 'Accounts') }}
+                        {{ item('/dashboard', 'Accounts', also='/admin/accounts/') }}
                     {% else %}
                         {{ item('/dashboard', 'My grades') }}
                         {{ item('/transcript', 'My transcript') }}

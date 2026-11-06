@@ -24,6 +24,15 @@
     'it_admin': 'IT admin'
 } %}
 
+{# The IT admin's account pages, in the order the cards are shown. #}
+{% set ROLE_GROUPS = [
+    ('student', 'Students'),
+    ('teacher', 'Teachers'),
+    ('academic_admin', 'Academic admin'),
+    ('registrar', 'Registrar'),
+    ('it_admin', 'IT admins')
+] %}
+
 {# The crest: an alder leaf over the water of the mere, on a shield. #}
 {% macro mark() %}
 <svg class="mark" viewBox="0 0 32 36" fill="none" aria-hidden="true">

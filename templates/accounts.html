@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% import '_ui.html' as ui with context %}
+{% set role_label = ui.ROLE_LABELS.get(account_role, account_role) %}
+{% set locked_count = accounts|selectattr('is_locked')|list|length %}
+
+{% block title %}{{ role_label }} accounts{% endblock %}
+
+{% block content %}
+<nav class="crumbs" aria-label="Account navigation">
+    <a class="back-link" href="/dashboard">{{ ui.icon('back') }}<span>All roles</span></a>
+</nav>
+
+<div class="title-row">
+    <div>
+        <h1>{{ role_label }} accounts</h1>
+        <p class="sub">
+            {{ accounts|length }} account{{ '' if accounts|length == 1 else 's' }}
+            {%- if locked_count %} · {{ locked_count }} locked{% else %} · all active{% endif %}
+        </p>
+    </div>
+</div>
+
+<div class="blocks">
+    <section class="panel panel-flush" aria-labelledby="role-accounts-title">
+        <header class="panel-head">
+            <h2 id="role-accounts-title">{{ role_label }}</h2>
+            <p class="meta">{{ accounts|length }} account{{ '' if accounts|length == 1 else 's' }}</p>
+        </header>
+        {% if accounts %}
+        <div class="table-wrap">
+            <table class="ledger ledger-accounts">
+                <thead>
+                    <tr>
+                        <th scope="col">User</th>
+                        <th scope="col">Access</th>
+                        <th scope="col" class="num">Failed logins</th>
+                        <th scope="col"><span class="sr-only">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in accounts %}
+                    <tr>
+                        <td class="c-main">
+                            {{ ui.person(u['username'], u['id']) }}
+                            {% if u['full_name'] %}<span class="line-two line-indent">{{ u['full_name'] }}{% if u['student_no'] %} · {{ u['student_no'] }}{% endif %}</span>{% endif %}
+                            <span class="line-two phone-only">{% if u['is_locked'] %}Locked · {% else %}Active · {% endif %}{{ u['failed_attempts'] }} of 5 failed logins</span>
+                        </td>
+                        <td class="c-by">{% if u['is_locked'] %}<span class="pill pill-negative">Locked</span>{% else %}<span class="text-muted">Active</span>{% endif %}</td>
+                        <td class="num c-by">{{ u['failed_attempts'] }} <span class="text-muted">of 5</span></td>
+                        <td class="c-action">
+                            <div class="row-actions">
+                                {% if u['is_locked'] or u['failed_attempts'] %}
+                                <form method="POST" action="/admin/unlock"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="user_id" value="{{ u['id'] }}">
+                                    <button type="submit" class="btn{{ ' btn-primary' if u['is_locked'] }}">Unlock<span class="sr-only"> {{ u['username'] }}</span></button>
+                                </form>
+                                {% endif %}
+                                <button type="button" class="btn" data-open="reset-{{ u['id'] }}">Reset password<span class="sr-only"> for {{ u['username'] }}</span></button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="empty">No accounts in this role.</p>
+        {% endif %}
+    </section>
+</div>
+
+{% for u in accounts %}
+<dialog class="slip" id="reset-{{ u['id'] }}" aria-labelledby="reset-title-{{ u['id'] }}">
+    <form method="POST" action="/admin/reset" class="stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="user_id" value="{{ u['id'] }}">
+        <header>
+            <h2 id="reset-title-{{ u['id'] }}">Reset password</h2>
+            <p class="meta">{{ u['username'] }}, {{ role_label }}</p>
+        </header>
+        <div class="field">
+            <label for="new-password-{{ u['id'] }}">New password</label>
+            <input class="control" type="password" id="new-password-{{ u['id'] }}" name="new_password" minlength="8" maxlength="128" autocomplete="new-password" aria-describedby="reset-note-{{ u['id'] }}" required>
+            <p class="hint" id="reset-note-{{ u['id'] }}">8 to 128 characters. This also unlocks the account.</p>
+        </div>
+        <div class="slip-actions">
+            <button type="submit" class="btn btn-primary">Reset password</button>
+            <button type="button" class="btn" data-close>Cancel</button>
+        </div>
+    </form>
+</dialog>
+{% endfor %}
+{% endblock %}

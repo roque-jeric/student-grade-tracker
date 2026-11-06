@@ -9,6 +9,7 @@ PROFILES = {
     "academic_admin1": ("Dr. Samuel Okafor", None, None, None),
     "registrar1": ("Grace Lindqvist", None, None, None),
     "it_admin1": ("Rafael Domingo", None, None, None),
+    "it_admin2": ("Nadia Flores", None, None, None),
     "student1": ("Maya Santos", "2024-01482", "BS Computer Science", 2),
     "student2": ("Daniel Reyes", "2024-01507", "BS Information Technology", 2),
 }
@@ -38,12 +39,21 @@ ROSTER = {
 
 
 def seed_people(conn, teacher="teacher1"):
-    """Fills in profiles and adds the sample class. Safe to run twice: existing rows are left alone."""
+    """Fills in profiles, adds the sample class, and ensures a second IT admin exists.
+    Safe to run twice: existing rows are left alone."""
     for username, (full_name, student_no, program, year_level) in PROFILES.items():
         conn.execute(
             "UPDATE users SET full_name=COALESCE(full_name, ?), student_no=COALESCE(student_no, ?), "
             "program=COALESCE(program, ?), year_level=COALESCE(year_level, ?) WHERE username=?",
             (full_name, student_no, program, year_level, username),
+        )
+
+    # A second IT admin so one admin can unlock the other if an account locks.
+    if not conn.execute("SELECT 1 FROM users WHERE username=?", ("it_admin2",)).fetchone():
+        hashed = bcrypt.hashpw(SAMPLE_PASSWORD.encode(), bcrypt.gensalt()).decode()
+        conn.execute(
+            "INSERT INTO users (username, password, role, full_name) VALUES (?, ?, ?, ?)",
+            ("it_admin2", hashed, "it_admin", PROFILES["it_admin2"][0]),
         )
 
     for username, (full_name, student_no, program, year_level, grades) in ROSTER.items():

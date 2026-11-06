@@ -731,6 +731,23 @@ def transcript():
         return "An error occurred. Please try again.", 500
 
 
+@app.route("/admin/accounts/<role>")
+@require_role("it_admin")
+def admin_accounts(role):
+    if role not in VALID_ROLES:
+        return "Not found.", 404
+    try:
+        accounts = get_db().execute(
+            "SELECT id, username, role, is_locked, failed_attempts, full_name, student_no "
+            "FROM users WHERE role=? ORDER BY id",
+            (role,),
+        ).fetchall()
+    except Exception as e:
+        logging.error(f"account list failed role={role} err={e}")
+        return "An error occurred. Please try again.", 500
+    return render_template("accounts.html", account_role=role, accounts=accounts)
+
+
 @app.route("/admin/unlock", methods=["POST"])
 @require_role("it_admin")
 def admin_unlock():
@@ -738,14 +755,19 @@ def admin_unlock():
     user_id = (request.form.get("user_id", "") or "").strip()
     if not valid_id(user_id):
         return "Invalid input.", 400
+    target_role = None
     try:
         db = get_db()
+        target = db.execute("SELECT role FROM users WHERE id=?", (int(user_id),)).fetchone()
+        target_role = target["role"] if target else None
         db.execute("UPDATE users SET is_locked=0, failed_attempts=0 WHERE id=?", (int(user_id),))
         db.commit()
         audit(user["id"], "ACCOUNT_UNLOCK", f"Unlocked user {user_id}")
     except Exception as e:
         logging.error(f"unlock failed err={e}")
         return "An error occurred. Please try again.", 500
+    if target_role in VALID_ROLES:
+        return redirect(f"/admin/accounts/{target_role}")
     return redirect("/dashboard")
 
 
@@ -757,15 +779,20 @@ def admin_reset():
     new_password = request.form.get("new_password", "") or ""
     if not valid_id(user_id) or not 8 <= len(new_password) <= 128:
         return "Invalid input. Password must be 8 to 128 characters.", 400
+    target_role = None
     try:
         hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
         db = get_db()
+        target = db.execute("SELECT role FROM users WHERE id=?", (int(user_id),)).fetchone()
+        target_role = target["role"] if target else None
         db.execute("UPDATE users SET password=?, is_locked=0, failed_attempts=0 WHERE id=?", (hashed, int(user_id)))
         db.commit()
         audit(user["id"], "ADMIN_PASSWORD_RESET", f"Reset password for user {user_id}")
     except Exception as e:
         logging.error(f"admin reset failed err={e}")
         return "An error occurred. Please try again.", 500
+    if target_role in VALID_ROLES:
+        return redirect(f"/admin/accounts/{target_role}")
     return redirect("/dashboard")
 
 

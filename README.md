@@ -4,7 +4,7 @@ Branded for Aldermere College, a fictional institution. Its name lives at the to
 
 5 roles, one Final grading period, secured per hardening requirements. Fresh DB with bcrypt hashes.
 
-## Roles (16 users seeded, password pass123 hashed with bcrypt+salt)
+## Roles (17 users seeded, password pass123 hashed with bcrypt+salt)
 | Username | Role |
 |----------|------|
 | teacher1 | teacher |
@@ -12,6 +12,9 @@ Branded for Aldermere College, a fictional institution. Its name lives at the to
 | academic_admin1 | academic_admin |
 | registrar1 | registrar |
 | it_admin1 | it_admin |
+| it_admin2 | it_admin |
+
+`it_admin2` is a second IT admin, so one admin can unlock the other if an account gets locked.
 
 Single period: `Final` (open/locked/archived). The grades on record are final grades; the registrar locks them all at once.
 
@@ -44,8 +47,8 @@ To upgrade an existing `database.db` without losing anything, run `python migrat
 - The pass mark is `PASS_MARK = 75` in `app.py`.
 
 ## Demo Flows
-1. **Lockout:** student1 wrong 5x -> locked -> it_admin1 dashboard Unlock
-2. **Forgot password:** Login -> Forgot password? -> IT office phone, email and room. it_admin1 finds the student by name or number and resets it
+1. **Lockout:** student1 wrong 5x -> locked -> either IT admin (`it_admin1` or `it_admin2`) unlocks it
+2. **Forgot password:** Login -> Forgot password? -> IT office phone, email and room. Either IT admin finds the student by name or number and resets it
 3. **Teacher roster:** teacher1 lands on all students. Click a student to see their grades per course
 4. **Teacher Add:** on a student, Add grade 95 ok, 999 rejected 400, `'; DROP` rejected 400
 5. **Correction:** teacher Correct on a course -> pending -> academic_admin Approve stays on /dashboard
@@ -53,13 +56,14 @@ To upgrade an existing `database.db` without losing anything, run `python migrat
 7. **SQLi blocked:** `' OR '1'='1' -- ` -> Invalid, no Dashboard
 8. **Registrar Lock:** Final grades locked -> Add grade is hidden and a direct post is refused on the student page
 9. **Transcript:** registrar `/transcript?student_id=2` certified table (no cert number). Teachers print a grade sheet (`/grade-sheet`) instead
-10. **IT Admin:** dashboard unlock/reset (reset needs 8+ chars, bcrypt hashed)
+10. **IT Admin:** dashboard role cards -> **View accounts** -> unlock/reset (reset needs 8+ chars, bcrypt hashed)
+11. **Admin recovery:** lock `it_admin1` with 5 wrong passwords -> log in as `it_admin2` -> Accounts -> IT admins -> unlock `it_admin1`
 
 ## Project Structure
 ```
 app.py (secured), schema.sql, init_db.py (bcrypt), migrate_db.py, sample_data.py, database.db
 templates/base (masthead and tabs), auth_base (login layout), _ui (macros, college and IT office details)
-templates/login, forgot_password, students (teacher roster), student_detail (grades per course), grade_sheet (teacher's class record), dashboard (other roles), view_grades, approvals, transcript
+templates/login, forgot_password, students (teacher roster), student_detail (grades per course), grade_sheet (teacher's class record), dashboard (role home), accounts (IT admin role pages), view_grades, approvals, transcript
 static/style.css, static/app.js (menu, dialogs, roster search and sort, print), static/fonts (self-hosted Source Sans 3 and EB Garamond, OFL licences)
 static/img (Rembrandt, A Scholar in His Study, c. 1652, Art Institute of Chicago, CC0)
 requirements.txt, app.log (private errors)

@@ -273,6 +273,36 @@ th[aria-sort] .th-sort { color: var(--primary); }
 .c-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .c-details { color: var(--muted); }
 
+/* ---------- IT admin: one card per account role ---------- */
+.role-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--gap);
+}
+.role-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 18px var(--card-pad);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+}
+.role-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.role-card h2 { font-size: var(--fs-section); line-height: 22px; font-weight: 700; color: var(--text); }
+.role-card-count {
+    flex: none;
+    color: var(--primary);
+    font-size: 32px;
+    line-height: 36px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+}
+.role-card-meta { color: var(--muted); font-size: var(--fs-small); line-height: 17px; }
+.role-card-status { min-height: 20px; margin: 4px 0 10px; }
+.role-card .btn { margin-top: auto; align-self: flex-start; }
+
 /* ---------- the class: summary line, what needs doing, the roster, the courses ---------- */
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 24px; }
 .stat-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: var(--section); }
@@ -560,6 +590,13 @@ th[aria-sort] .th-sort { color: var(--primary); }
     .ledger-record .c-action { grid-column: 2; grid-row: 2; justify-self: end; margin: -8px 0; }
     .ledger-pending .row-actions, .ledger-accounts .row-actions { justify-content: flex-start; align-items: center; gap: 16px; margin-top: 6px; }
     .ledger-pending .btn-primary { padding: 0 20px; }
+
+    /* The role cards fall into two columns, with the odd last card taking the full width. */
+    .role-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .role-card { padding: 14px; }
+    .role-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+    .role-card-count { font-size: 26px; line-height: 30px; }
+    .role-card .btn { width: 100%; }
 
     .ledger-sheet tr { padding-left: 0; padding-right: 0; }
     .sheet { padding: 20px 16px; }
